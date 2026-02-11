@@ -4,6 +4,7 @@
 #include "nodes/NodeFactory.h"
 #include "SPSCQueue.h"
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -41,6 +42,29 @@ namespace rau
     };
 
     /**
+     * GraphSnapshot — an immutable snapshot of the graph topology.
+     *
+     * Built on the message thread, then atomically swapped into the
+     * audio thread's active slot. Nodes are shared (owned by the
+     * AudioGraph's master map), so only the topology is duplicated.
+     */
+    struct GraphSnapshot
+    {
+        struct Connection
+        {
+            std::string fromNodeId;
+            int fromOutlet;
+            std::string toNodeId;
+            int toInlet;
+        };
+
+        std::vector<AudioNodeBase *> processingOrder;
+        std::vector<Connection> connections;
+        std::string outputNodeId;
+        std::string inputNodeId;
+    };
+
+    /**
      * AudioGraph — the real-time DSP node graph.
      *
      * Owns all DSP nodes, manages a topologically-sorted processing order,
@@ -49,9 +73,11 @@ namespace rau
      *
      * Thread safety model:
      *  - processBlock() is called on the audio thread
-     *  - queueOp() and applyPendingOps() handle cross-thread communication
-     *  - Graph mutations happen on the audio thread (inside processBlock)
-     *    after draining the operation queue
+     *  - queueOp() queues topology changes; the message thread builds a
+     *    new GraphSnapshot and publishes it via atomic pointer swap
+     *  - setNodeParam() writes directly to atomic params (lock-free fast path)
+     *  - UpdateParams ops also go through the SPSC queue for batched updates
+     *  - The audio thread reads the latest snapshot at the top of processBlock()
      */
     class AudioGraph
     {
@@ -77,26 +103,26 @@ namespace rau
 
     private:
         void applyPendingOps();
-        void rebuildProcessingOrder();
+        void rebuildAndPublishSnapshot();
+        static void buildProcessingOrder(
+            const std::unordered_map<std::string, std::unique_ptr<AudioNodeBase>> &nodeMap,
+            const std::vector<GraphSnapshot::Connection> &conns,
+            std::vector<AudioNodeBase *> &outOrder);
 
-        // Node storage
+        // Node storage (shared across snapshots — nodes outlive topology changes)
         std::unordered_map<std::string, std::unique_ptr<AudioNodeBase>> nodes;
 
-        // Connections: toNodeId -> list of {fromNodeId, fromOutlet, toInlet}
-        struct Connection
-        {
-            std::string fromNodeId;
-            int fromOutlet;
-            std::string toNodeId;
-            int toInlet;
-        };
-        std::vector<Connection> connections;
-
-        // Topologically sorted processing order
-        std::vector<AudioNodeBase *> processingOrder;
-
-        // Output node
+        // Authoritative topology (message-thread side)
+        std::vector<GraphSnapshot::Connection> connections;
         std::string outputNodeId;
+        std::string inputNodeId;
+
+        // Double-buffered snapshots: the audio thread reads from activeSnapshot,
+        // the message thread writes to the staging slot and swaps.
+        // Using two heap-allocated snapshots and an atomic pointer.
+        std::unique_ptr<GraphSnapshot> snapshotA;
+        std::unique_ptr<GraphSnapshot> snapshotB;
+        std::atomic<GraphSnapshot *> activeSnapshot{nullptr};
 
         // Buffer pool (pre-allocated)
         std::vector<juce::AudioBuffer<float>> bufferPool;
@@ -105,9 +131,9 @@ namespace rau
         void releaseBuffer(int index);
 
         // Operation queue (message thread -> audio thread)
-        // Lock-free SPSC FIFO — producer: message thread, consumer: audio thread.
-        // 1024 slots should accommodate even large graph rebuilds.
-        SPSCQueue<GraphOp, 1024> opQueue;
+        // Only used for UpdateParams ops now; topology changes are handled
+        // by snapshot swap.
+        SPSCQueue<GraphOp, 1024> paramOpQueue;
         std::vector<GraphOp> processingOps; // drained from SPSC on audio thread
 
         // Audio config
@@ -115,8 +141,6 @@ namespace rau
         int currentBlockSize = 512;
         int currentNumChannels = 2;
 
-        // Special "input" node that wraps the host buffer
-        std::string inputNodeId;
         juce::AudioBuffer<float> *hostInputBuffer = nullptr;
     };
 

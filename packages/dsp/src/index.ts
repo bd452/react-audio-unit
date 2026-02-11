@@ -44,6 +44,16 @@ export type { LFOParams, LFOShape } from "./hooks/useLFO.js";
 export { useEnvelope } from "./hooks/useEnvelope.js";
 export type { EnvelopeParams } from "./hooks/useEnvelope.js";
 
+// Composite effects
+export { useChorus } from "./hooks/useChorus.js";
+export type { ChorusParams } from "./hooks/useChorus.js";
+
+export { useFlanger } from "./hooks/useFlanger.js";
+export type { FlangerParams } from "./hooks/useFlanger.js";
+
+export { usePhaser } from "./hooks/usePhaser.js";
+export type { PhaserParams } from "./hooks/usePhaser.js";
+
 // Analysis
 export { useMeter } from "./hooks/useMeter.js";
 export type { MeterData, MeterType } from "./hooks/useMeter.js";

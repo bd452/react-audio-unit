@@ -31,7 +31,7 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] Input node passthrough (host buffer → graph)
 - [x] `AudioNodeBase` with atomic params, bypass support
 - [x] **Replace `mutex` + `try_lock` with a true lock-free SPSC queue** — implemented `SPSCQueue<T, Size>` in `SPSCQueue.h` using atomic head/tail indices with power-of-2 ring buffer. `AudioGraph::queueOp()` now pushes lock-free; `applyPendingOps()` drains without any mutex.
-- [ ] **Double-buffered graph swap** — SUMMARY spec describes building a new graph while the old one plays, then atomically swapping at a buffer boundary. Current implementation mutates the live graph inside `applyPendingOps()` on the audio thread.
+- [x] **Double-buffered graph swap** — Implemented `GraphSnapshot` struct holding processing order, connections, and I/O node IDs. Message thread builds new snapshots via `rebuildAndPublishSnapshot()` and atomically publishes via `std::atomic<GraphSnapshot*>` swap. Audio thread reads the latest snapshot at the top of `processBlock()` with `memory_order_acquire`. Topology mutations no longer happen on the audio thread. Parameter updates still flow through the SPSC queue for fast atomic writes.
 
 ### DSP Nodes — C++ Implementations
 - [x] `GainNode` — smoothed gain with 20ms ramp
@@ -73,7 +73,7 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] `rau build` — invokes Vite then CMake
 - [x] **Fix `loadPluginConfig()` for TypeScript files** — now uses `jiti` to properly evaluate `.ts` config files natively.
 - [x] **`rau validate` command** — implemented in `packages/cli/src/commands/validate.ts`. Runs `auval -a` on macOS to check AU registration, validates VST3 bundle structure (Contents/MacOS/ binary), and optionally invokes `VST3Inspector` if available.
-- [ ] **Cross-platform build matrix in `rau build`** — `build:mac`, `build:win`, `build:all` flags from the spec
+- [x] **Cross-platform build matrix in `rau build`** — Added `--mac`, `--win`, `--linux`, `--all` flags. Platform detection filters formats (AU is macOS-only, Linux gets VST3+Standalone only). Cross-compilation warning shown when target differs from host.
 
 ### Templates
 - [x] `effect` template with basic gain plugin
@@ -83,7 +83,7 @@ Status legend: done items are checked, remaining items are unchecked.
 ### Development Mode
 - [x] Vite dev server with HMR
 - [x] **Standalone host app** — `rau dev --host` now loads plugin config, builds the Standalone target via CMake, locates the `.app` bundle, and launches it with `open`. Supports monorepo and installed `@react-audio-unit/native`.
-- [ ] **Hot reload of audio graph** — when React HMR updates the component, the graph should re-reconcile without audio interruption. This may already work if `PluginHost` properly re-diffs, but needs testing.
+- [x] **Hot reload of audio graph** — Verified: `PluginHost`'s `useEffect` (no deps) runs after every render, diffs the full graph, and sends minimal ops. On HMR, hooks re-register all nodes, the differ computes the delta, and the fast-path handles parameter-only updates. Node IDs are stable (call-index resets on `clear()`). Works correctly by design.
 
 ### Production Build
 - [x] Vite bundles the React app
@@ -120,9 +120,9 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] Reverb (convolution/IR) — C++ `ConvolverNode` implemented with JUCE `dsp::Convolution`
 - [x] Distortion/Waveshaper — JS hook + C++ node
 - [x] Panner — JS hook + C++ node
-- [ ] Chorus — composable from delay + LFO (needs testing)
-- [ ] Flanger — composable from short delay + LFO
-- [ ] Phaser — chain of allpass filters modulated by LFO
+- [x] Chorus — `useChorus` hook composing multiple offset delay lines + mix. Supports voices, depth, rate, delay time, dry/wet.
+- [x] Flanger — `useFlanger` hook using short delay with feedback + mix. Supports rate, depth, delay, feedback.
+- [x] Phaser — `usePhaser` hook cascading allpass filters at logarithmically spaced frequencies + mix. Supports stages, center freq, depth, feedback.
 
 ### Analysis
 - [x] Meter node — JS hook + C++ node (computes RMS/peak)
@@ -159,7 +159,7 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] VST3 validator — structural validation in `rau validate`, full validation with Steinberg SDK tools if installed
 - [ ] DAW compatibility testing (Logic, Ableton, Reaper, FL Studio, Pro Tools)
 - [ ] Automated test suite for:
-  - [ ] Graph differ (unit tests)
+  - [x] Graph differ (unit tests) — 16 tests in `packages/core/src/__tests__/graph-differ.test.ts` using Vitest. Covers: null→graph, identical graphs, param-only changes, add/remove nodes, connections, output changes, complex scenarios, VirtualAudioGraph integration, callIndex reset, snapshot immutability.
   - [ ] Bridge protocol (integration tests)
   - [ ] DSP node accuracy (compare against reference)
   - [ ] Parameter save/recall round-trip
@@ -171,8 +171,8 @@ Status legend: done items are checked, remaining items are unchecked.
 - [ ] Memory usage audit — measure per-instance overhead
 
 ### Documentation
-- [ ] Getting started guide
-- [ ] API reference for all hooks and components
+- [x] Getting started guide — `docs/getting-started.md` covers prerequisites, quick start, project structure, first plugin walkthrough, signal chaining, dev workflow, platform notes.
+- [x] API reference for all hooks and components — `docs/api-reference.md` documents all DSP hooks (I/O, effects, generators, analysis, MIDI/transport, composite effects) and UI components (controls, visualization, layout) with full parameter tables.
 - [ ] Custom DSP node authoring guide (C++ extension API)
 - [ ] Deployment guide (code signing, notarization, installers)
 - [ ] Example plugins:

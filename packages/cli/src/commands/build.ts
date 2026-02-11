@@ -20,7 +20,19 @@ export const buildCommand = new Command("build")
   .description("Build production plugin binaries")
   .option("--debug", "Build in debug mode")
   .option("--format <formats...>", "Plugin formats to build (au, vst3, aax)")
-  .action(async (options: { debug?: boolean; format?: string[] }) => {
+  .option("--mac", "Build for macOS only")
+  .option("--win", "Build for Windows only")
+  .option("--linux", "Build for Linux only")
+  .option("--all", "Build for all supported platforms (current host only)")
+  .action(
+    async (options: {
+      debug?: boolean;
+      format?: string[];
+      mac?: boolean;
+      win?: boolean;
+      linux?: boolean;
+      all?: boolean;
+    }) => {
     const cwd = process.cwd();
     const buildType = options.debug ? "Debug" : "Release";
 
@@ -37,7 +49,55 @@ export const buildCommand = new Command("build")
     }
     console.log(chalk.dim(`  Plugin: ${config.name} v${config.version}`));
     console.log(chalk.dim(`  Vendor: ${config.vendor}`));
-    console.log(chalk.dim(`  Formats: ${config.formats.join(", ")}`));
+
+    // Determine target platform
+    const hostPlatform = process.platform; // 'darwin', 'win32', 'linux'
+    let targetPlatform: string;
+    if (options.mac) targetPlatform = "darwin";
+    else if (options.win) targetPlatform = "win32";
+    else if (options.linux) targetPlatform = "linux";
+    else targetPlatform = hostPlatform; // --all or default: build for current host
+
+    if (targetPlatform !== hostPlatform) {
+      console.log(
+        chalk.yellow(
+          `  Note: Cross-compilation requested (host: ${hostPlatform}, target: ${targetPlatform}).`,
+        ),
+      );
+      console.log(
+        chalk.yellow(
+          "  Cross-compilation requires platform-specific toolchains.",
+        ),
+      );
+    }
+
+    // Filter formats by target platform
+    const defaultFormats = config.formats.map((f: string) => f.toLowerCase());
+    let platformFormats: string[];
+    if (options.format) {
+      platformFormats = options.format;
+    } else if (targetPlatform === "darwin") {
+      platformFormats = defaultFormats.filter((f: string) =>
+        ["au", "vst3", "aax", "standalone"].includes(f),
+      );
+    } else if (targetPlatform === "win32") {
+      // AU is macOS-only
+      platformFormats = defaultFormats.filter(
+        (f: string) => f !== "au" && ["vst3", "aax", "standalone"].includes(f),
+      );
+    } else {
+      // Linux — VST3 and Standalone only
+      platformFormats = defaultFormats.filter((f: string) =>
+        ["vst3", "standalone"].includes(f),
+      );
+    }
+
+    console.log(chalk.dim(`  Formats: ${platformFormats.join(", ")}`));
+    console.log(
+      chalk.dim(
+        `  Platform: ${targetPlatform === "darwin" ? "macOS" : targetPlatform === "win32" ? "Windows" : "Linux"}`,
+      ),
+    );
     console.log();
 
     // 2. Build the React UI with Vite
@@ -60,8 +120,6 @@ export const buildCommand = new Command("build")
     const buildDir = path.join(cwd, "build", buildType.toLowerCase());
     await fs.ensureDir(buildDir);
 
-    const formats =
-      options.format ?? config.formats.map((f) => f.toLowerCase());
     const isSynth = config.category === "Instrument";
 
     const cmakeArgs = [
@@ -78,9 +136,9 @@ export const buildCommand = new Command("build")
       `-DRAU_UI_WIDTH=${config.ui.width}`,
       `-DRAU_UI_HEIGHT=${config.ui.height}`,
       `-DRAU_WEB_UI_DIR=${uiDistDir}`,
-      `-DRAU_BUILD_AU=${formats.includes("au") ? "ON" : "OFF"}`,
-      `-DRAU_BUILD_VST3=${formats.includes("vst3") ? "ON" : "OFF"}`,
-      `-DRAU_BUILD_AAX=${formats.includes("aax") ? "ON" : "OFF"}`,
+      `-DRAU_BUILD_AU=${platformFormats.includes("au") ? "ON" : "OFF"}`,
+      `-DRAU_BUILD_VST3=${platformFormats.includes("vst3") ? "ON" : "OFF"}`,
+      `-DRAU_BUILD_AAX=${platformFormats.includes("aax") ? "ON" : "OFF"}`,
       `-DCMAKE_BUILD_TYPE=${buildType}`,
     ];
 
@@ -129,7 +187,8 @@ export const buildCommand = new Command("build")
         chalk.dim(`  Check: ${buildDir}/${sanitizedName}_artefacts/`),
       );
     }
-  });
+  },
+  );
 
 async function loadPluginConfig(cwd: string): Promise<PluginConfig | null> {
   // Look for config file in multiple formats

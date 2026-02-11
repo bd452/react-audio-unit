@@ -15,6 +15,8 @@
     "build": "tsup src/index.ts --format esm --dts",
     "dev": "tsup src/index.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
@@ -23,7 +25,8 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
+    "tsup": "^8.0.0",
     "typescript": "^5.7.0",
-    "tsup": "^8.0.0"
+    "vitest": "^4.0.18"
   }
 }

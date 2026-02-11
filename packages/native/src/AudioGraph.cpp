@@ -10,6 +10,9 @@ namespace rau
 
     AudioGraph::AudioGraph()
     {
+        snapshotA = std::make_unique<GraphSnapshot>();
+        snapshotB = std::make_unique<GraphSnapshot>();
+        activeSnapshot.store(snapshotA.get(), std::memory_order_relaxed);
     }
 
     AudioGraph::~AudioGraph() = default;
@@ -50,8 +53,7 @@ namespace rau
                 return i;
             }
         }
-        // Pool exhausted — grow it (this allocation is not RT-safe, but is
-        // a safety net; the pool should be sized to avoid this)
+        // Pool exhausted — grow it (safety net; pool should be sized to avoid this)
         int idx = static_cast<int>(bufferPool.size());
         bufferPool.emplace_back();
         bufferPool.back().setSize(currentNumChannels, currentBlockSize);
@@ -69,14 +71,88 @@ namespace rau
     }
 
     // ---------------------------------------------------------------------------
-    // Operation queue
+    // Operation queue (message thread side)
     // ---------------------------------------------------------------------------
 
     void AudioGraph::queueOp(GraphOp op)
     {
-        // Lock-free push — if the queue is full, the op is dropped.
-        // In practice 1024 slots should never be exhausted.
-        opQueue.push(std::move(op));
+        // UpdateParams go through the fast SPSC queue — audio thread applies
+        // them directly to the atomic params on existing nodes.
+        if (op.type == GraphOp::UpdateParams)
+        {
+            paramOpQueue.push(std::move(op));
+            return;
+        }
+
+        // Topology changes are applied immediately on the message thread
+        // to the authoritative state, then a new snapshot is built and
+        // published atomically for the audio thread.
+        switch (op.type)
+        {
+        case GraphOp::AddNode:
+        {
+            auto node = NodeFactory::create(op.nodeType);
+            if (node)
+            {
+                node->nodeId = op.nodeId;
+                node->nodeType = op.nodeType;
+                for (auto &[k, v] : op.params)
+                {
+                    node->setParam(k, v);
+                }
+                node->prepare(currentSampleRate, currentBlockSize);
+                nodes[op.nodeId] = std::move(node);
+            }
+            else if (op.nodeType == "input")
+            {
+                inputNodeId = op.nodeId;
+            }
+            break;
+        }
+        case GraphOp::RemoveNode:
+        {
+            connections.erase(
+                std::remove_if(connections.begin(), connections.end(),
+                               [&](const GraphSnapshot::Connection &c)
+                               {
+                                   return c.fromNodeId == op.nodeId || c.toNodeId == op.nodeId;
+                               }),
+                connections.end());
+            nodes.erase(op.nodeId);
+            if (op.nodeId == inputNodeId)
+                inputNodeId.clear();
+            break;
+        }
+        case GraphOp::Connect:
+        {
+            connections.push_back({op.fromNodeId, op.fromOutlet, op.toNodeId, op.toInlet});
+            break;
+        }
+        case GraphOp::Disconnect:
+        {
+            connections.erase(
+                std::remove_if(connections.begin(), connections.end(),
+                               [&](const GraphSnapshot::Connection &c)
+                               {
+                                   return c.fromNodeId == op.fromNodeId &&
+                                          c.fromOutlet == op.fromOutlet &&
+                                          c.toNodeId == op.toNodeId &&
+                                          c.toInlet == op.toInlet;
+                               }),
+                connections.end());
+            break;
+        }
+        case GraphOp::SetOutput:
+        {
+            outputNodeId = op.nodeId;
+            break;
+        }
+        default:
+            break;
+        }
+
+        // After every topology change, rebuild and publish a new snapshot
+        rebuildAndPublishSnapshot();
     }
 
     void AudioGraph::setNodeParam(const std::string &nodeId, const std::string &param, float value)
@@ -108,132 +184,47 @@ namespace rau
         return result;
     }
 
-    void AudioGraph::applyPendingOps()
+    // ---------------------------------------------------------------------------
+    // Snapshot building (message thread)
+    // ---------------------------------------------------------------------------
+
+    void AudioGraph::rebuildAndPublishSnapshot()
     {
-        // Drain the lock-free SPSC queue (audio thread side)
-        processingOps.clear();
-        GraphOp op;
-        while (opQueue.pop(op))
-        {
-            processingOps.push_back(std::move(op));
-        }
+        // Determine which snapshot slot is NOT currently active
+        auto *current = activeSnapshot.load(std::memory_order_acquire);
+        GraphSnapshot *staging = (current == snapshotA.get()) ? snapshotB.get() : snapshotA.get();
 
-        if (processingOps.empty())
-            return;
+        // Build the new snapshot in the staging slot
+        staging->connections = connections;
+        staging->outputNodeId = outputNodeId;
+        staging->inputNodeId = inputNodeId;
 
-        bool topologyChanged = false;
+        buildProcessingOrder(nodes, staging->connections, staging->processingOrder);
 
-        for (auto &op : processingOps)
-        {
-            switch (op.type)
-            {
-            case GraphOp::AddNode:
-            {
-                auto node = NodeFactory::create(op.nodeType);
-                if (node)
-                {
-                    node->nodeId = op.nodeId;
-                    node->nodeType = op.nodeType;
-                    for (auto &[k, v] : op.params)
-                    {
-                        node->setParam(k, v);
-                    }
-                    node->prepare(currentSampleRate, currentBlockSize);
-                    nodes[op.nodeId] = std::move(node);
-                }
-                else if (op.nodeType == "input")
-                {
-                    // Track the input node ID — it's handled specially
-                    inputNodeId = op.nodeId;
-                }
-                topologyChanged = true;
-                break;
-            }
-            case GraphOp::RemoveNode:
-            {
-                // Remove connections involving this node
-                connections.erase(
-                    std::remove_if(connections.begin(), connections.end(),
-                                   [&](const Connection &c)
-                                   {
-                                       return c.fromNodeId == op.nodeId || c.toNodeId == op.nodeId;
-                                   }),
-                    connections.end());
-                nodes.erase(op.nodeId);
-                if (op.nodeId == inputNodeId)
-                    inputNodeId.clear();
-                topologyChanged = true;
-                break;
-            }
-            case GraphOp::UpdateParams:
-            {
-                auto it = nodes.find(op.nodeId);
-                if (it != nodes.end() && it->second)
-                {
-                    for (auto &[k, v] : op.params)
-                    {
-                        it->second->setParam(k, v);
-                    }
-                }
-                break;
-            }
-            case GraphOp::Connect:
-            {
-                connections.push_back({op.fromNodeId, op.fromOutlet, op.toNodeId, op.toInlet});
-                topologyChanged = true;
-                break;
-            }
-            case GraphOp::Disconnect:
-            {
-                connections.erase(
-                    std::remove_if(connections.begin(), connections.end(),
-                                   [&](const Connection &c)
-                                   {
-                                       return c.fromNodeId == op.fromNodeId &&
-                                              c.fromOutlet == op.fromOutlet &&
-                                              c.toNodeId == op.toNodeId &&
-                                              c.toInlet == op.toInlet;
-                                   }),
-                    connections.end());
-                topologyChanged = true;
-                break;
-            }
-            case GraphOp::SetOutput:
-            {
-                outputNodeId = op.nodeId;
-                break;
-            }
-            }
-        }
-
-        processingOps.clear();
-
-        if (topologyChanged)
-        {
-            rebuildProcessingOrder();
-        }
+        // Atomically publish — the audio thread will pick this up at the
+        // start of the next processBlock call.
+        activeSnapshot.store(staging, std::memory_order_release);
     }
 
-    // ---------------------------------------------------------------------------
-    // Topological sort
-    // ---------------------------------------------------------------------------
-
-    void AudioGraph::rebuildProcessingOrder()
+    void AudioGraph::buildProcessingOrder(
+        const std::unordered_map<std::string, std::unique_ptr<AudioNodeBase>> &nodeMap,
+        const std::vector<GraphSnapshot::Connection> &conns,
+        std::vector<AudioNodeBase *> &outOrder)
     {
-        processingOrder.clear();
+        outOrder.clear();
 
         // Build adjacency info
         std::unordered_map<std::string, int> inDegree;
         std::unordered_map<std::string, std::vector<std::string>> adjacency;
 
-        for (auto &[id, _] : nodes)
+        for (auto &[id, _] : nodeMap)
         {
             inDegree[id] = 0;
         }
 
-        for (auto &conn : connections)
+        for (auto &conn : conns)
         {
-            if (nodes.count(conn.toNodeId) && nodes.count(conn.fromNodeId))
+            if (nodeMap.count(conn.toNodeId) && nodeMap.count(conn.fromNodeId))
             {
                 inDegree[conn.toNodeId]++;
                 adjacency[conn.fromNodeId].push_back(conn.toNodeId);
@@ -253,10 +244,10 @@ namespace rau
             auto id = queue.front();
             queue.pop();
 
-            auto it = nodes.find(id);
-            if (it != nodes.end() && it->second)
+            auto it = nodeMap.find(id);
+            if (it != nodeMap.end() && it->second)
             {
-                processingOrder.push_back(it->second.get());
+                outOrder.push_back(it->second.get());
             }
 
             if (adjacency.count(id))
@@ -274,7 +265,31 @@ namespace rau
     }
 
     // ---------------------------------------------------------------------------
-    // Process
+    // Apply pending param updates (audio thread)
+    // ---------------------------------------------------------------------------
+
+    void AudioGraph::applyPendingOps()
+    {
+        // Drain param-only ops from the SPSC queue
+        GraphOp op;
+        while (paramOpQueue.pop(op))
+        {
+            if (op.type == GraphOp::UpdateParams)
+            {
+                auto it = nodes.find(op.nodeId);
+                if (it != nodes.end() && it->second)
+                {
+                    for (auto &[k, v] : op.params)
+                    {
+                        it->second->setParam(k, v);
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Process (audio thread)
     // ---------------------------------------------------------------------------
 
     void AudioGraph::processBlock(juce::AudioBuffer<float> &buffer, juce::MidiBuffer &midi)
@@ -282,29 +297,30 @@ namespace rau
         hostInputBuffer = &buffer;
         const int numSamples = buffer.getNumSamples();
 
-        // Apply any queued graph operations
+        // Apply any pending parameter updates (lock-free drain)
         applyPendingOps();
 
-        if (processingOrder.empty())
+        // Read the latest graph snapshot (atomic load)
+        auto *snapshot = activeSnapshot.load(std::memory_order_acquire);
+        if (!snapshot || snapshot->processingOrder.empty())
             return;
 
         // Reset buffer pool
         std::fill(bufferInUse.begin(), bufferInUse.end(), false);
 
-        // Assign output buffers and wire up inputs for each node
         // Build a map of nodeId -> output BufferRef
         std::unordered_map<std::string, BufferRef> nodeOutputs;
 
         // The input node's output is the host buffer itself
-        if (!inputNodeId.empty())
+        if (!snapshot->inputNodeId.empty())
         {
-            nodeOutputs[inputNodeId] = {&buffer, -1}; // -1 = host buffer, don't release
+            nodeOutputs[snapshot->inputNodeId] = {&buffer, -1};
         }
 
-        for (auto *node : processingOrder)
+        for (auto *node : snapshot->processingOrder)
         {
             // Skip the input node — its output is the host buffer
-            if (node->nodeId == inputNodeId)
+            if (node->nodeId == snapshot->inputNodeId)
                 continue;
 
             // Acquire an output buffer for this node
@@ -317,7 +333,7 @@ namespace rau
 
             // Find connections to this node, sorted by inlet
             std::vector<std::pair<int, BufferRef>> inputs;
-            for (auto &conn : connections)
+            for (auto &conn : snapshot->connections)
             {
                 if (conn.toNodeId == node->nodeId)
                 {
@@ -334,7 +350,6 @@ namespace rau
 
             for (auto &[inlet, ref] : inputs)
             {
-                // Ensure vector is large enough
                 while (static_cast<int>(node->inputBuffers.size()) <= inlet)
                 {
                     node->inputBuffers.push_back({});
@@ -354,9 +369,9 @@ namespace rau
         }
 
         // Copy the output node's buffer back to the host buffer
-        if (!outputNodeId.empty())
+        if (!snapshot->outputNodeId.empty())
         {
-            auto outIt = nodeOutputs.find(outputNodeId);
+            auto outIt = nodeOutputs.find(snapshot->outputNodeId);
             if (outIt != nodeOutputs.end() && outIt->second.isValid())
             {
                 auto &outBuf = *outIt->second.buffer;
