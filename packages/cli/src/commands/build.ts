@@ -103,25 +103,31 @@ export const buildCommand = new Command("build")
     console.log(chalk.green("Build complete!"));
     console.log();
 
-    // Report output locations
-    const outputDir = path.join(
-      buildDir,
-      `${config.name}_artefacts`,
-      buildType,
-    );
-    if (await fs.pathExists(outputDir)) {
-      console.log(chalk.dim("Plugin binaries:"));
-      const entries = await fs.readdir(outputDir, { recursive: true });
-      for (const entry of entries) {
-        const ext = path.extname(String(entry));
-        if (
-          [".component", ".vst3", ".aaxplugin", ""].some(
-            (e) => ext === e || String(entry).includes(ext),
-          )
-        ) {
-          console.log(chalk.cyan(`  ${outputDir}/${entry}`));
-        }
+    // Report output locations — JUCE uses the sanitized target name
+    const sanitizedName = config.name.replace(/[^a-zA-Z0-9_]/g, "");
+    const artefactCandidates = [
+      path.join(buildDir, `${sanitizedName}_artefacts`, buildType),
+      path.join(buildDir, `${config.name}_artefacts`, buildType),
+      path.join(buildDir, `${sanitizedName}_artefacts`),
+    ];
+
+    let outputDir: string | null = null;
+    for (const candidate of artefactCandidates) {
+      if (await fs.pathExists(candidate)) {
+        outputDir = candidate;
+        break;
       }
+    }
+
+    if (outputDir) {
+      console.log(chalk.dim("Plugin binaries:"));
+      const pluginExtensions = [".component", ".vst3", ".aaxplugin", ".app"];
+      await reportPluginOutputs(outputDir, pluginExtensions);
+    } else {
+      console.log(chalk.dim("  Could not locate build artefacts directory."));
+      console.log(
+        chalk.dim(`  Check: ${buildDir}/${sanitizedName}_artefacts/`),
+      );
     }
   });
 
@@ -165,6 +171,25 @@ async function loadPluginConfig(cwd: string): Promise<PluginConfig | null> {
   }
 
   return null;
+}
+
+async function reportPluginOutputs(
+  dir: string,
+  extensions: string[],
+): Promise<void> {
+  if (!(await fs.pathExists(dir))) return;
+
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    const isPlugin = extensions.some((ext) => entry.name.endsWith(ext));
+
+    if (isPlugin) {
+      console.log(chalk.cyan(`  ${fullPath}`));
+    } else if (entry.isDirectory() && !entry.name.startsWith(".")) {
+      await reportPluginOutputs(fullPath, extensions);
+    }
+  }
 }
 
 function resolveNativeSrc(cwd: string): string | null {

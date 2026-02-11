@@ -62,6 +62,9 @@ namespace rau
         /** Parse and dispatch a JSON message from JS. */
         void handleJSMessage(const juce::String &json);
 
+        /** Periodically read meter/spectrum analysis data and forward to JS. */
+        void sendAnalysisData();
+
         AudioGraph audioGraph;
         ParameterStore paramStore;
         WebViewBridge webViewBridge;
@@ -70,6 +73,18 @@ namespace rau
 
         // Cached JS state for save/recall
         std::string jsStateCache;
+
+        // Timer to send analysis data (meter, spectrum) to JS
+        class AnalysisTimer : public juce::Timer
+        {
+        public:
+            AnalysisTimer(PluginProcessor &p) : processor(p) {}
+            void timerCallback() override { processor.sendAnalysisData(); }
+
+        private:
+            PluginProcessor &processor;
+        };
+        AnalysisTimer analysisTimer{*this};
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
     };

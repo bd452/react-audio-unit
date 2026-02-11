@@ -1,9 +1,28 @@
 #include "ParameterStore.h"
+#include <cmath>
 
 namespace rau
 {
 
     ParameterStore::ParameterStore(juce::AudioProcessor & /*proc*/) {}
+
+    float ParameterStore::actualToNormalized(const RangeInfo &r, float actual) const
+    {
+        if (r.max <= r.min)
+            return 0.0f;
+        float proportion = (actual - r.min) / (r.max - r.min);
+        if (r.skew != 1.0f && proportion > 0.0f)
+            proportion = std::pow(proportion, 1.0f / r.skew);
+        return juce::jlimit(0.0f, 1.0f, proportion);
+    }
+
+    float ParameterStore::normalizedToActual(const RangeInfo &r, float normalized) const
+    {
+        float proportion = juce::jlimit(0.0f, 1.0f, normalized);
+        if (r.skew != 1.0f && proportion > 0.0f)
+            proportion = std::pow(proportion, r.skew);
+        return r.min + proportion * (r.max - r.min);
+    }
 
     ParameterStore::~ParameterStore()
     {
@@ -42,7 +61,8 @@ namespace rau
     }
 
     void ParameterStore::registerParameter(const std::string &id, float min, float max,
-                                           float defaultValue, const std::string &label)
+                                           float defaultValue, const std::string &label,
+                                           const std::string &curve)
     {
         if (!apvts || idToSlot.count(id))
             return;
@@ -52,16 +72,28 @@ namespace rau
         idToSlot[id] = slotId;
         slotToId[slotId] = id;
 
-        // Store the range mapping for this parameter
-        rangeMap[slotId] = {min, max};
+        // Determine skew factor from curve type
+        // JUCE NormalisableRange skew: <1 = more resolution at top (log-like),
+        //   >1 = more resolution at bottom (exp-like).
+        // We flip convention to match user expectations:
+        //   "logarithmic" → skew 0.3 (frequency-style, more at bottom)
+        //   "exponential" → skew 3.0 (more at top)
+        float skew = 1.0f;
+        if (curve == "logarithmic")
+            skew = 0.3f;
+        else if (curve == "exponential")
+            skew = 3.0f;
+
+        // Store the range mapping with skew for this parameter
+        rangeMap[slotId] = {min, max, skew};
 
         nextSlot++;
 
-        // Set the normalized default value
+        // Set the normalized default value (applying skew)
         if (auto *param = apvts->getParameter(slotId))
         {
-            float normalizedDefault = (max > min) ? (defaultValue - min) / (max - min) : 0.0f;
-            param->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, normalizedDefault));
+            float normalizedDefault = actualToNormalized(rangeMap[slotId], defaultValue);
+            param->setValueNotifyingHost(normalizedDefault);
         }
 
         // Listen for DAW automation changes on this slot
@@ -78,14 +110,10 @@ namespace rau
 
         if (auto *param = apvts->getParameter(it->second))
         {
-            // Convert actual value to normalized 0–1 using stored range
             auto rangeIt = rangeMap.find(it->second);
             if (rangeIt != rangeMap.end())
             {
-                float min = rangeIt->second.first;
-                float max = rangeIt->second.second;
-                float normalized = (max > min) ? (value - min) / (max - min) : 0.0f;
-                param->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, normalized));
+                param->setValueNotifyingHost(actualToNormalized(rangeIt->second, value));
             }
             else
             {
@@ -102,14 +130,11 @@ namespace rau
 
         if (auto *param = apvts->getParameter(it->second))
         {
-            // Convert normalized 0–1 back to actual value using stored range
             float normalized = param->getValue();
             auto rangeIt = rangeMap.find(it->second);
             if (rangeIt != rangeMap.end())
             {
-                float min = rangeIt->second.first;
-                float max = rangeIt->second.second;
-                return min + normalized * (max - min);
+                return normalizedToActual(rangeIt->second, normalized);
             }
             return normalized;
         }
@@ -128,14 +153,11 @@ namespace rau
             auto it = slotToId.find(parameterID.toStdString());
             if (it != slotToId.end())
             {
-                // Convert normalized value back to actual range
                 auto rangeIt = rangeMap.find(parameterID.toStdString());
                 float actualValue = newValue;
                 if (rangeIt != rangeMap.end())
                 {
-                    float min = rangeIt->second.first;
-                    float max = rangeIt->second.second;
-                    actualValue = min + newValue * (max - min);
+                    actualValue = normalizedToActual(rangeIt->second, newValue);
                 }
                 changeCallback(it->second, actualValue);
             }

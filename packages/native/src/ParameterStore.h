@@ -30,8 +30,15 @@ namespace rau
          * In practice, we pre-allocate a fixed number of generic
          * parameter slots and map JS parameter IDs to them dynamically.
          */
+        /**
+         * Curve types for parameter scaling:
+         *   "linear"      — default 1:1 mapping
+         *   "logarithmic" — log skew (e.g. frequency), skewFactor < 1
+         *   "exponential"  — exp skew (e.g. fine control at low end), skewFactor > 1
+         */
         void registerParameter(const std::string &id, float min, float max,
-                               float defaultValue, const std::string &label);
+                               float defaultValue, const std::string &label,
+                               const std::string &curve = "linear");
 
         void setParameterValue(const std::string &id, float value);
         float getParameterValue(const std::string &id) const;
@@ -69,8 +76,18 @@ namespace rau
         std::unordered_map<std::string, std::string> slotToId;
         int nextSlot = 0;
 
-        // Range mapping: slot ID → {min, max}
-        std::unordered_map<std::string, std::pair<float, float>> rangeMap;
+        // Range mapping: slot ID → {min, max, skewFactor}
+        struct RangeInfo
+        {
+            float min = 0.0f;
+            float max = 1.0f;
+            float skew = 1.0f; // 1.0 = linear, <1 = log, >1 = exp
+        };
+        std::unordered_map<std::string, RangeInfo> rangeMap;
+
+        // Convert between actual and normalized, applying skew
+        float actualToNormalized(const RangeInfo &r, float actual) const;
+        float normalizedToActual(const RangeInfo &r, float normalized) const;
 
         std::function<void(const std::string &, float)> changeCallback;
     };

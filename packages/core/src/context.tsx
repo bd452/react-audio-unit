@@ -13,6 +13,7 @@ import {
 } from "./virtual-graph.js";
 import { diffGraphsFull } from "./graph-differ.js";
 import { bridge, NativeBridge } from "./bridge.js";
+import { autoInstallDevBridge } from "./dev-bridge.js";
 import type {
   AudioNodeDescriptor,
   BridgeInMessage,
@@ -142,6 +143,9 @@ export function PluginHost({ children }: PluginHostProps) {
 
   // Connect the bridge on mount
   useEffect(() => {
+    // Auto-install dev bridge for browser preview if not in JUCE WebView
+    autoInstallDevBridge((msg) => bridge.dispatch(msg));
+
     bridge.connect();
 
     const unsub = bridge.onMessage((msg: BridgeInMessage) => {

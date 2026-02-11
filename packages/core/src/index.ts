@@ -24,6 +24,9 @@ export type { DiffResult } from "./graph-differ.js";
 // Bridge
 export { NativeBridge, bridge } from "./bridge.js";
 
+// Dev bridge (browser mock)
+export { installDevBridge, autoInstallDevBridge } from "./dev-bridge.js";
+
 // Contexts & PluginHost
 export {
   AudioGraphContext,

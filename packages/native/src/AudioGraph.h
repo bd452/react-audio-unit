@@ -2,12 +2,12 @@
 
 #include "nodes/NodeBase.h"
 #include "nodes/NodeFactory.h"
+#include "SPSCQueue.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <mutex>
 
 namespace rau
 {
@@ -69,6 +69,12 @@ namespace rau
         // Called from message thread — direct parameter update (fast path)
         void setNodeParam(const std::string &nodeId, const std::string &param, float value);
 
+        // Access a node by ID (for meter/spectrum readout). Returns nullptr if not found.
+        AudioNodeBase *getNode(const std::string &nodeId) const;
+
+        // Get all nodes of a given type (e.g. "meter", "spectrum")
+        std::vector<AudioNodeBase *> getNodesByType(const std::string &type) const;
+
     private:
         void applyPendingOps();
         void rebuildProcessingOrder();
@@ -99,11 +105,10 @@ namespace rau
         void releaseBuffer(int index);
 
         // Operation queue (message thread -> audio thread)
-        // Using a simple mutex+vector since ops are applied once per block
-        // and the audio thread only tries to lock (non-blocking).
-        std::mutex opQueueMutex;
-        std::vector<GraphOp> pendingOps;
-        std::vector<GraphOp> processingOps; // swapped in on audio thread
+        // Lock-free SPSC FIFO — producer: message thread, consumer: audio thread.
+        // 1024 slots should accommodate even large graph rebuilds.
+        SPSCQueue<GraphOp, 1024> opQueue;
+        std::vector<GraphOp> processingOps; // drained from SPSC on audio thread
 
         // Audio config
         double currentSampleRate = 44100.0;

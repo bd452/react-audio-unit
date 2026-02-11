@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { createCommand } from "./commands/create.js";
 import { devCommand } from "./commands/dev.js";
 import { buildCommand } from "./commands/build.js";
+import { validateCommand } from "./commands/validate.js";
 
 const program = new Command()
   .name("rau")
@@ -13,5 +14,6 @@ const program = new Command()
 program.addCommand(createCommand);
 program.addCommand(devCommand);
 program.addCommand(buildCommand);
+program.addCommand(validateCommand);
 
 program.parse();

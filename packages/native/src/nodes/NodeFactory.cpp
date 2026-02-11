@@ -12,6 +12,7 @@
 #include "EnvelopeNode.h"
 #include "MeterNode.h"
 #include "SpectrumNode.h"
+#include "ConvolverNode.h"
 
 namespace rau
 {
@@ -31,6 +32,8 @@ namespace rau
             return std::make_unique<CompressorNode>();
         if (type == "reverb")
             return std::make_unique<ReverbNode>();
+        if (type == "convolver")
+            return std::make_unique<ConvolverNode>();
         if (type == "distortion")
             return std::make_unique<DistortionNode>();
         if (type == "pan")

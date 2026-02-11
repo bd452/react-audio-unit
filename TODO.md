@@ -22,7 +22,7 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] **Fix `WebViewBridge.cpp`** — removed broken `createWebView()`, replaced with `createWebViewOptions()` + `setWebView()` pattern. Bridge no longer owns the WebBrowserComponent.
 - [x] **Fix PluginEditor JS→C++ message path** — PluginEditor now uses `createWebViewOptions()` from the bridge (which registers the `rau_js_message` native function), then calls `setWebView()` to enable C++→JS messaging. Messages flow: JS → native function → bridge callback → `handleJSMessage()`.
 - [x] **String-to-enum parameter conversion** — added `stringParamToFloat()` and `varToFloat()` in `PluginProcessor.cpp` that maps string values for `filterType`, `waveform`, `distortionType`, `law`, `shape`, `meterType` to their float enum equivalents.
-- [ ] **Dev/browser mock bridge** — `__RAU_DEV_BRIDGE__` is referenced in `bridge.ts` but never implemented. Need a Web Audio API–backed mock so plugins can be previewed in a browser without the native harness.
+- [x] **Dev/browser mock bridge** — implemented `DevBridge` class with Web Audio API backend in `packages/core/src/dev-bridge.ts`. Auto-installs via `PluginHost` when not inside a JUCE WebView. Provides basic audio passthrough and parameter management for browser preview.
 
 ### Native Audio Engine
 - [x] `AudioGraph` with topological sort (Kahn's algorithm)
@@ -30,7 +30,7 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] Buffer pool with acquire/release
 - [x] Input node passthrough (host buffer → graph)
 - [x] `AudioNodeBase` with atomic params, bypass support
-- [ ] **Replace `mutex` + `try_lock` with a true lock-free SPSC queue** — current `applyPendingOps()` uses `std::mutex::try_lock()` which is not strictly real-time safe (can cause priority inversion on some OSes). Replace with a single-producer single-consumer lock-free FIFO.
+- [x] **Replace `mutex` + `try_lock` with a true lock-free SPSC queue** — implemented `SPSCQueue<T, Size>` in `SPSCQueue.h` using atomic head/tail indices with power-of-2 ring buffer. `AudioGraph::queueOp()` now pushes lock-free; `applyPendingOps()` drains without any mutex.
 - [ ] **Double-buffered graph swap** — SUMMARY spec describes building a new graph while the old one plays, then atomically swapping at a buffer boundary. Current implementation mutates the live graph inside `applyPendingOps()` on the audio thread.
 
 ### DSP Nodes — C++ Implementations
@@ -49,14 +49,14 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] **MeterNode** — RMS/peak per channel, atomic data for bridge readout
 - [x] **SpectrumNode** — 2048-point FFT, Hann window, magnitude output
 - [x] Register all new nodes in `NodeFactory`
-- [ ] **ConvolverNode** — IR-based convolution reverb (load IR from binary data)
+- [x] **ConvolverNode** — IR-based convolution reverb using JUCE's `dsp::Convolution` engine. Supports loading IR from raw float data or WAV/AIFF files. Registered in `NodeFactory`.
 
 ### Parameter Management
 - [x] `ParameterStore` with APVTS slot mapping
 - [x] `useParameter` hook with DAW automation sync
 - [x] **Fix `ParameterStore::registerParameter()` range mapping** — added `rangeMap` to store min/max per slot; `setParameterValue`, `getParameterValue`, and `parameterChanged` now properly convert between actual values and 0–1 normalized range.
 - [x] **Implement `ParameterStore::restoreStateFromJson()`** — now parses JSON with JUCE's JSON parser and calls `setParameterValue()` for each key.
-- [ ] **Parameter `curve` support** — `useParameter` accepts `curve: 'logarithmic' | 'exponential'` but the native side doesn't apply skew to the `NormalisableRange`.
+- [x] **Parameter `curve` support** — `ParameterStore::registerParameter()` now accepts a `curve` string ("linear", "logarithmic", "exponential"). Stores a `skew` factor per slot and applies power-curve conversion in `actualToNormalized()` / `normalizedToActual()`. `PluginProcessor` forwards the `curve` field from the JS `registerParameter` message.
 
 ### I/O Hooks
 - [x] `useInput` — wraps the DAW audio input as a Signal
@@ -72,7 +72,7 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] `rau dev` — starts Vite dev server
 - [x] `rau build` — invokes Vite then CMake
 - [x] **Fix `loadPluginConfig()` for TypeScript files** — now uses `jiti` to properly evaluate `.ts` config files natively.
-- [ ] **`rau validate` command** — run `auval` (macOS) and VST3 validator against built plugins
+- [x] **`rau validate` command** — implemented in `packages/cli/src/commands/validate.ts`. Runs `auval -a` on macOS to check AU registration, validates VST3 bundle structure (Contents/MacOS/ binary), and optionally invokes `VST3Inspector` if available.
 - [ ] **Cross-platform build matrix in `rau build`** — `build:mac`, `build:win`, `build:all` flags from the spec
 
 ### Templates
@@ -82,14 +82,14 @@ Status legend: done items are checked, remaining items are unchecked.
 
 ### Development Mode
 - [x] Vite dev server with HMR
-- [ ] **Standalone host app** — `rau dev --host` should build and launch a minimal JUCE Standalone app that loads the plugin and connects the WebView to the dev server. Currently logged as TODO in `dev.ts`.
+- [x] **Standalone host app** — `rau dev --host` now loads plugin config, builds the Standalone target via CMake, locates the `.app` bundle, and launches it with `open`. Supports monorepo and installed `@react-audio-unit/native`.
 - [ ] **Hot reload of audio graph** — when React HMR updates the component, the graph should re-reconcile without audio interruption. This may already work if `PluginHost` properly re-diffs, but needs testing.
 
 ### Production Build
 - [x] Vite bundles the React app
 - [x] CMake builds with `juce_add_binary_data` for embedded UI
 - [x] **Implement embedded UI resource serving** — PluginEditor now uses `withResourceProvider()` to serve files from BinaryData, with proper MIME type detection.
-- [ ] **Build output reporting** — `rau build` tries to list output files but the path logic is fragile. Verify it works for AU/VST3/Standalone outputs.
+- [x] **Build output reporting** — `rau build` now uses sanitized target name to locate artefacts, tries multiple candidate paths, and recursively lists `.component`, `.vst3`, `.aaxplugin`, and `.app` files.
 
 ### UI Components
 - [x] Knob (SVG, drag interaction, value display)
@@ -117,7 +117,7 @@ Status legend: done items are checked, remaining items are unchecked.
 ### Effects
 - [x] Compressor — JS hook + C++ node
 - [x] Reverb (algorithmic) — JS hook + C++ node
-- [ ] Reverb (convolution/IR) — JS hook exists, C++ ConvolverNode missing
+- [x] Reverb (convolution/IR) — C++ `ConvolverNode` implemented with JUCE `dsp::Convolution`
 - [x] Distortion/Waveshaper — JS hook + C++ node
 - [x] Panner — JS hook + C++ node
 - [ ] Chorus — composable from delay + LFO (needs testing)
@@ -127,9 +127,10 @@ Status legend: done items are checked, remaining items are unchecked.
 ### Analysis
 - [x] Meter node — JS hook + C++ node (computes RMS/peak)
 - [x] Spectrum node — JS hook + C++ node (FFT magnitudes)
+- [x] **Analysis data bridge** — `PluginProcessor` has an `AnalysisTimer` (30Hz) that reads `MeterNode` peak/RMS and `SpectrumNode` FFT magnitudes and sends them to JS as `meterData` and `spectrumData` bridge messages. `AudioGraph::getNodesByType()` enables efficient node lookup.
 
 ### MIDI
-- [ ] MIDI input node — JS hook exists, C++ side needs to forward MIDI events from `processBlock`'s `MidiBuffer` into the graph
+- [x] MIDI input node — `PluginProcessor::processBlock()` now iterates `MidiBuffer`, serializes noteOn/noteOff/CC/pitchBend events to JSON, and sends via `webViewBridge.sendToJS()` as `{"type":"midi","events":[...]}`.
 - [ ] Polyphonic voice management for instrument plugins
 - [ ] Note priority / voice stealing
 
@@ -154,8 +155,8 @@ Status legend: done items are checked, remaining items are unchecked.
 - [ ] **CI/CD pipeline** — GitHub Actions for building on all platforms
 
 ### Validation & Testing
-- [ ] `auval` validation for AU plugins on macOS
-- [ ] VST3 validator
+- [x] `auval` validation for AU plugins on macOS — covered by `rau validate` command
+- [x] VST3 validator — structural validation in `rau validate`, full validation with Steinberg SDK tools if installed
 - [ ] DAW compatibility testing (Logic, Ableton, Reaper, FL Studio, Pro Tools)
 - [ ] Automated test suite for:
   - [ ] Graph differ (unit tests)
@@ -176,10 +177,10 @@ Status legend: done items are checked, remaining items are unchecked.
 - [ ] Deployment guide (code signing, notarization, installers)
 - [ ] Example plugins:
   - [x] Echo Delay
-  - [ ] Simple Gain (minimal example)
-  - [ ] Parametric EQ
-  - [ ] Subtractive Synth
-  - [ ] Channel Strip (EQ + Comp + Gate)
+  - [x] Simple Gain (minimal example) — `examples/simple-gain/`
+  - [x] Parametric EQ — `examples/parametric-eq/` (4-band EQ with spectrum display, logarithmic frequency curves)
+  - [x] Subtractive Synth — `examples/subtractive-synth/` (oscillator + filter + ADSR + on-screen keyboard)
+  - [x] Channel Strip (EQ + Comp + Gate) — `examples/channel-strip/` (HP filter + 3-band EQ + compressor + input/output metering)
 
 ---
 

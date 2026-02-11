@@ -1,5 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "nodes/MeterNode.h"
+#include "nodes/SpectrumNode.h"
 #include <juce_core/juce_core.h>
 
 namespace rau
@@ -143,7 +145,10 @@ namespace rau
                                       { handleJSMessage(json); });
     }
 
-    PluginProcessor::~PluginProcessor() = default;
+    PluginProcessor::~PluginProcessor()
+    {
+        analysisTimer.stopTimer();
+    }
 
     // ---------------------------------------------------------------------------
     // Audio lifecycle
@@ -158,6 +163,9 @@ namespace rau
                                juce::String(sampleRate) + "}");
         webViewBridge.sendToJS("{\"type\":\"blockSize\",\"value\":" +
                                juce::String(samplesPerBlock) + "}");
+
+        // Start analysis data timer (~30 fps)
+        analysisTimer.startTimerHz(30);
     }
 
     void PluginProcessor::releaseResources()
@@ -208,8 +216,109 @@ namespace rau
             }
         }
 
+        // Forward MIDI events to JS
+        if (!midi.isEmpty())
+        {
+            juce::String midiJson = "{\"type\":\"midi\",\"events\":[";
+            bool first = true;
+            for (const auto metadata : midi)
+            {
+                const auto msg = metadata.getMessage();
+                if (!first)
+                    midiJson += ",";
+                first = false;
+
+                if (msg.isNoteOn())
+                {
+                    midiJson += "{\"type\":\"noteOn\",\"channel\":" +
+                                juce::String(msg.getChannel()) +
+                                ",\"note\":" + juce::String(msg.getNoteNumber()) +
+                                ",\"velocity\":" + juce::String(msg.getFloatVelocity()) + "}";
+                }
+                else if (msg.isNoteOff())
+                {
+                    midiJson += "{\"type\":\"noteOff\",\"channel\":" +
+                                juce::String(msg.getChannel()) +
+                                ",\"note\":" + juce::String(msg.getNoteNumber()) +
+                                ",\"velocity\":" + juce::String(msg.getFloatVelocity()) + "}";
+                }
+                else if (msg.isController())
+                {
+                    midiJson += "{\"type\":\"cc\",\"channel\":" +
+                                juce::String(msg.getChannel()) +
+                                ",\"cc\":" + juce::String(msg.getControllerNumber()) +
+                                ",\"value\":" + juce::String(msg.getControllerValue()) + "}";
+                }
+                else if (msg.isPitchWheel())
+                {
+                    midiJson += "{\"type\":\"pitchBend\",\"channel\":" +
+                                juce::String(msg.getChannel()) +
+                                ",\"value\":" + juce::String(msg.getPitchWheelValue()) + "}";
+                }
+            }
+            midiJson += "]}";
+            webViewBridge.sendToJS(midiJson);
+        }
+
         // Process the audio graph
         audioGraph.processBlock(buffer, midi);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Analysis data forwarding (meter / spectrum → JS)
+    // ---------------------------------------------------------------------------
+
+    void PluginProcessor::sendAnalysisData()
+    {
+        // Forward meter data
+        auto meterNodes = audioGraph.getNodesByType("meter");
+        for (auto *node : meterNodes)
+        {
+            auto *meter = dynamic_cast<MeterNode *>(node);
+            if (!meter)
+                continue;
+
+            float peakL = meter->getPeak(0);
+            float peakR = meter->getPeak(1);
+            float rmsL = meter->getRms(0);
+            float rmsR = meter->getRms(1);
+
+            juce::String json = "{\"type\":\"meterData\",\"nodeId\":\"" +
+                                juce::String(meter->nodeId) +
+                                "\",\"peak\":[" + juce::String(peakL) + "," + juce::String(peakR) +
+                                "],\"rms\":[" + juce::String(rmsL) + "," + juce::String(rmsR) + "]}";
+            webViewBridge.sendToJS(json);
+        }
+
+        // Forward spectrum data
+        auto spectrumNodes = audioGraph.getNodesByType("spectrum");
+        for (auto *node : spectrumNodes)
+        {
+            auto *spectrum = dynamic_cast<SpectrumNode *>(node);
+            if (!spectrum)
+                continue;
+
+            auto magnitudes = spectrum->getMagnitudes();
+            if (magnitudes.empty())
+                continue;
+
+            // Downsample to ~128 bins for the bridge
+            constexpr int MAX_BINS = 128;
+            int step = std::max(1, static_cast<int>(magnitudes.size()) / MAX_BINS);
+
+            juce::String json = "{\"type\":\"spectrumData\",\"nodeId\":\"" +
+                                juce::String(spectrum->nodeId) + "\",\"magnitudes\":[";
+            bool first = true;
+            for (int i = 0; i < static_cast<int>(magnitudes.size()); i += step)
+            {
+                if (!first)
+                    json += ",";
+                first = false;
+                json += juce::String(magnitudes[i], 4);
+            }
+            json += "]}";
+            webViewBridge.sendToJS(json);
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -371,7 +480,8 @@ namespace rau
             float max = config.getProperty("max", 1.0f);
             float def = config.getProperty("default", 0.0f);
             auto label = config.getProperty("label", "").toString().toStdString();
-            paramStore.registerParameter(id, min, max, def, label);
+            auto curve = config.getProperty("curve", "linear").toString().toStdString();
+            paramStore.registerParameter(id, min, max, def, label, curve);
         }
         else if (type == "setParameterValue")
         {

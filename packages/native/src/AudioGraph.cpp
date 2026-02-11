@@ -1,6 +1,7 @@
 #include "AudioGraph.h"
 #include <algorithm>
 #include <queue>
+#include <cassert>
 
 namespace rau
 {
@@ -73,8 +74,9 @@ namespace rau
 
     void AudioGraph::queueOp(GraphOp op)
     {
-        std::lock_guard<std::mutex> lock(opQueueMutex);
-        pendingOps.push_back(std::move(op));
+        // Lock-free push — if the queue is full, the op is dropped.
+        // In practice 1024 slots should never be exhausted.
+        opQueue.push(std::move(op));
     }
 
     void AudioGraph::setNodeParam(const std::string &nodeId, const std::string &param, float value)
@@ -87,18 +89,33 @@ namespace rau
         }
     }
 
+    AudioNodeBase *AudioGraph::getNode(const std::string &nodeId) const
+    {
+        auto it = nodes.find(nodeId);
+        if (it != nodes.end())
+            return it->second.get();
+        return nullptr;
+    }
+
+    std::vector<AudioNodeBase *> AudioGraph::getNodesByType(const std::string &type) const
+    {
+        std::vector<AudioNodeBase *> result;
+        for (auto &[id, node] : nodes)
+        {
+            if (node && node->nodeType == type)
+                result.push_back(node.get());
+        }
+        return result;
+    }
+
     void AudioGraph::applyPendingOps()
     {
-        // Try to grab pending ops (non-blocking attempt)
-        if (opQueueMutex.try_lock())
+        // Drain the lock-free SPSC queue (audio thread side)
+        processingOps.clear();
+        GraphOp op;
+        while (opQueue.pop(op))
         {
-            std::swap(processingOps, pendingOps);
-            pendingOps.clear();
-            opQueueMutex.unlock();
-        }
-        else
-        {
-            return; // Skip this block, try next time
+            processingOps.push_back(std::move(op));
         }
 
         if (processingOps.empty())

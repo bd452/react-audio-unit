@@ -45,8 +45,6 @@ export const devCommand = new Command("dev")
 
     if (options.host) {
       console.log(chalk.blue("Building standalone host..."));
-      // Build the native standalone app pointing to the dev server
-      // This requires CMake and a C++ compiler
       const nativeSrcDir = resolveNativeSrc();
       if (!nativeSrcDir) {
         console.error(
@@ -61,12 +59,33 @@ export const devCommand = new Command("dev")
         const buildDir = path.join(cwd, "build", "dev");
         await fs.ensureDir(buildDir);
 
+        // Load config to get proper plugin name
+        let pluginName = "DevPlugin";
+        const configPath = path.join(cwd, "plugin.config.ts");
+        if (await fs.pathExists(configPath)) {
+          try {
+            const { createJiti } = await import("jiti");
+            const jiti = createJiti(cwd);
+            const mod = (await jiti.import(configPath)) as Record<
+              string,
+              unknown
+            >;
+            const config = (mod.default ?? mod) as { name?: string };
+            if (config.name) pluginName = config.name;
+          } catch {
+            // fallback
+          }
+        }
+
+        const sanitizedName = pluginName.replace(/[^a-zA-Z0-9_]/g, "");
+
         // Configure CMake for Standalone only, with dev server URL
+        const devServerUrl = `http://localhost:${options.port}`;
         await execa(
           "cmake",
           [
             nativeSrcDir,
-            `-DRAU_PLUGIN_NAME=DevPlugin`,
+            `-DRAU_PLUGIN_NAME=${pluginName}`,
             `-DRAU_BUILD_AU=OFF`,
             `-DRAU_BUILD_VST3=OFF`,
             `-DRAU_BUILD_AAX=OFF`,
@@ -75,14 +94,47 @@ export const devCommand = new Command("dev")
           { cwd: buildDir, stdio: "inherit" },
         );
 
-        // Build
-        await execa("cmake", ["--build", ".", "--config", "Debug"], {
-          cwd: buildDir,
-          stdio: "inherit",
-        });
+        // Build (Standalone only)
+        const os = await import("os");
+        const jobs = Math.max(1, os.cpus().length);
+        await execa(
+          "cmake",
+          [
+            "--build",
+            ".",
+            "--config",
+            "Debug",
+            "--target",
+            `${sanitizedName}_Standalone`,
+            "-j",
+            String(jobs),
+          ],
+          {
+            cwd: buildDir,
+            stdio: "inherit",
+          },
+        );
 
         console.log(chalk.green("  Standalone host built. Launching..."));
-        // Launch the standalone app (platform-dependent)
+
+        // Find and launch the standalone app
+        const standalonePath = await findStandalone(buildDir, sanitizedName);
+        if (standalonePath) {
+          console.log(chalk.dim(`  Launching: ${standalonePath}`));
+          // Launch the standalone app in the background
+          const standaloneProc = execa("open", [standalonePath], {
+            reject: false,
+          });
+          standaloneProc.catch(() => {
+            /* ignore exit errors */
+          });
+        } else {
+          console.log(
+            chalk.yellow(
+              "  Could not locate standalone binary. Check build output.",
+            ),
+          );
+        }
       }
     }
 
@@ -95,7 +147,6 @@ export const devCommand = new Command("dev")
   });
 
 function resolveNativeSrc(): string | null {
-  // Look for @react-audio-unit/native in node_modules
   const candidates = [
     path.resolve(process.cwd(), "node_modules/@react-audio-unit/native"),
     path.resolve(process.cwd(), "../../packages/native"), // monorepo
@@ -103,6 +154,53 @@ function resolveNativeSrc(): string | null {
   for (const p of candidates) {
     if (fs.existsSync(path.join(p, "CMakeLists.txt"))) {
       return p;
+    }
+  }
+  return null;
+}
+
+async function findStandalone(
+  buildDir: string,
+  sanitizedName: string,
+): Promise<string | null> {
+  // On macOS, the standalone app is at:
+  //   <buildDir>/<name>_artefacts/Debug/Standalone/<name>.app
+  const candidates = [
+    path.join(
+      buildDir,
+      `${sanitizedName}_artefacts`,
+      "Debug",
+      "Standalone",
+      `${sanitizedName}.app`,
+    ),
+    path.join(
+      buildDir,
+      `${sanitizedName}_artefacts`,
+      "Standalone",
+      `${sanitizedName}.app`,
+    ),
+  ];
+
+  for (const p of candidates) {
+    if (await fs.pathExists(p)) {
+      return p;
+    }
+  }
+
+  // Fallback: recursively look for .app
+  return findRecursive(buildDir, ".app");
+}
+
+async function findRecursive(dir: string, ext: string): Promise<string | null> {
+  if (!(await fs.pathExists(dir))) return null;
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name.endsWith(ext)) {
+      return path.join(dir, entry.name);
+    }
+    if (entry.isDirectory() && !entry.name.startsWith(".")) {
+      const result = await findRecursive(path.join(dir, entry.name), ext);
+      if (result) return result;
     }
   }
   return null;
