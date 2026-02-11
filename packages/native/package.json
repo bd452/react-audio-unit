@@ -1,0 +1,14 @@
+{
+  "name": "@react-audio-unit/native",
+  "version": "0.1.0",
+  "description": "Native C++/JUCE plugin harness for React Audio Unit",
+  "scripts": {
+    "typecheck": "echo 'N/A — native C++ package'"
+  },
+  "files": [
+    "CMakeLists.txt",
+    "src/**/*.h",
+    "src/**/*.cpp",
+    "cmake/**/*"
+  ]
+}

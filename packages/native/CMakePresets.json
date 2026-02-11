@@ -1,0 +1,26 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Development",
+      "description": "Default development configuration",
+      "binaryDir": "${sourceDir}/../../build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "RAU_PLUGIN_NAME": "DevPlugin",
+        "RAU_PLUGIN_VENDOR": "ReactAudioUnit",
+        "RAU_PLUGIN_CODE": "RaDv",
+        "RAU_VENDOR_CODE": "RAUn",
+        "RAU_PLUGIN_VERSION": "0.1.0"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    }
+  ]
+}
