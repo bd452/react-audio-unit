@@ -6,6 +6,43 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** Read the CLI's own version to inject into scaffolded projects. */
+function getCliVersion(): string {
+  try {
+    const pkgPath = path.resolve(__dirname, "../../package.json");
+    const pkg = fs.readJsonSync(pkgPath);
+    return pkg.version ?? "0.1.0";
+  } catch {
+    return "0.1.0";
+  }
+}
+
+/** Packages whose versions in templates should track the CLI release. */
+const RAU_PACKAGES = [
+  "@react-audio-unit/core",
+  "@react-audio-unit/dsp",
+  "@react-audio-unit/ui",
+  "@react-audio-unit/cli",
+  "@react-audio-unit/native",
+];
+
+/** Replace placeholder versions with the current release version. */
+function updateRauVersions(
+  pkg: Record<string, unknown>,
+  version: string,
+): void {
+  const versionRange = `^${version}`;
+  for (const section of ["dependencies", "devDependencies"] as const) {
+    const deps = pkg[section] as Record<string, string> | undefined;
+    if (!deps) continue;
+    for (const name of RAU_PACKAGES) {
+      if (name in deps) {
+        deps[name] = versionRange;
+      }
+    }
+  }
+}
+
 export const createCommand = new Command("create")
   .description("Scaffold a new React Audio Unit plugin project")
   .argument("<name>", "Plugin project name")
@@ -35,11 +72,12 @@ export const createCommand = new Command("create")
     // Copy template
     await fs.copy(templateDir, targetDir);
 
-    // Update package.json with project name
+    // Update package.json with project name and current RAU versions
     const pkgPath = path.join(targetDir, "package.json");
     if (await fs.pathExists(pkgPath)) {
       const pkg = await fs.readJson(pkgPath);
       pkg.name = name;
+      updateRauVersions(pkg, getCliVersion());
       await fs.writeJson(pkgPath, pkg, { spaces: 2 });
     }
 

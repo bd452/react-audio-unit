@@ -191,3 +191,9 @@ Status legend: done items are checked, remaining items are unchecked.
 2. ~~**PluginEditor bridge wiring broken**~~ — Fixed: refactored `WebViewBridge` to provide options (with native function), PluginEditor creates WebView with those options and calls `setWebView()`.
 3. ~~**String params silently become 0**~~ — Fixed: added `varToFloat()` in `PluginProcessor.cpp` with conversion tables for all string-enum params.
 4. ~~**WebViewBridge.createWebView() returns nullptr**~~ — Fixed: removed `createWebView()`, replaced with `createWebViewOptions()` + `setWebView()` pattern.
+5. ~~**ReverbNode pre-delay not implemented**~~ — Fixed: added circular buffer pre-delay line with smoothed delay time and linear interpolation.
+6. ~~**GainNode lacks modulation input**~~ — Fixed: GainNode now supports a second input (inlet 1) for amplitude modulation (e.g. from envelope). JS `useGain` hook accepts `Signal` for `gain` parameter.
+7. ~~**Synth example envelope not connected**~~ — Fixed: uses `useGain(filtered, { gain: env })` to connect envelope as amplitude modulator.
+8. ~~**CLI templates have hardcoded versions**~~ — Fixed: `rau create` now reads the CLI's own version and injects it into scaffolded `package.json` dependencies.
+9. ~~**CI triggers on wrong branch**~~ — Fixed: changed `main` to `master` in `.github/workflows/ci.yml`.
+10. ~~**API reference missing hooks**~~ — Fixed: added docs for `useConvolver`, `useChannelSplit`, `useChannelMerge`, `usePolyphony`, `usePresets`.

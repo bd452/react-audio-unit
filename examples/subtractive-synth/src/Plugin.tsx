@@ -114,16 +114,12 @@ export default function Plugin() {
     resonance,
   });
 
-  // Apply envelope as amplitude modulation, then master volume
-  const shaped = useGain(filtered, { gain: volume });
-  const final = useGain(shaped, { gain: 1.0 });
-
-  // Connect envelope to the gain node via audio graph connection
-  // The envelope output (0-1 signal) modulates the amplitude
-  // Note: In a full implementation, the envelope would be connected
-  // as an input to the gain node. For now, the ADSR is created as a
-  // node in the graph and the host connects it automatically.
-  void env; // Ensure env node is included in the graph
+  // Apply envelope as amplitude modulation, then master volume.
+  // Passing `env` (a Signal) as the gain parameter connects the
+  // envelope output to the GainNode's modulation input (inlet 1),
+  // multiplying the audio sample-by-sample by the envelope value.
+  const shaped = useGain(filtered, { gain: env });
+  const final = useGain(shaped, { gain: volume });
 
   const meter = useMeter(final);
   useOutput(final);

@@ -28,7 +28,26 @@ namespace rau
 
         smoothedGain.setTargetValue(getParam("gain"));
 
-        if (smoothedGain.isSmoothing())
+        // Check for amplitude modulation input (e.g. envelope on inlet 1).
+        // When present, multiply audio (input 0) by modulation (input 1)
+        // sample-by-sample, then scale by the gain parameter.
+        if (inputBuffers.size() >= 2 && inputBuffers[1].isValid())
+        {
+            auto &mod = *inputBuffers[1].buffer;
+
+            for (int s = 0; s < numSamples; ++s)
+            {
+                const float g = smoothedGain.getNextValue();
+                // Read modulation value from first channel of mod input
+                const float modVal = mod.getSample(0, s);
+
+                for (int ch = 0; ch < numChannels; ++ch)
+                {
+                    out.setSample(ch, s, in.getSample(ch, s) * modVal * g);
+                }
+            }
+        }
+        else if (smoothedGain.isSmoothing())
         {
             for (int s = 0; s < numSamples; ++s)
             {
