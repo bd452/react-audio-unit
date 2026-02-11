@@ -40,10 +40,10 @@ namespace rau
 
         // --- Lifecycle -----------------------------------------------------------
 
-        virtual void prepare(double sampleRate, int maxBlockSize)
+        virtual void prepare(double sr, int blockSize)
         {
-            this->sampleRate = sampleRate;
-            this->maxBlockSize = maxBlockSize;
+            sampleRate = sr;
+            maxBlockSize = blockSize;
         }
 
         /**

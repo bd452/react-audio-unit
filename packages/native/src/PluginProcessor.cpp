@@ -63,19 +63,31 @@ namespace rau
             auto position = playHead->getPosition();
             if (position.hasValue())
             {
-                auto bpm = position->getBpm().orFallback(120.0);
-                auto timeSig = position->getTimeSignature().orFallback({4, 4});
-                auto playing = position->getIsPlaying();
-                auto samples = position->getTimeInSamples().orFallback(0);
+                double bpm = 120.0;
+                if (auto b = position->getBpm())
+                    bpm = *b;
+
+                int timeSigNum = 4, timeSigDen = 4;
+                if (auto ts = position->getTimeSignature())
+                {
+                    timeSigNum = ts->numerator;
+                    timeSigDen = ts->denominator;
+                }
+
+                bool playing = position->getIsPlaying();
+
+                juce::int64 positionSamples = 0;
+                if (auto s = position->getTimeInSamples())
+                    positionSamples = *s;
 
                 juce::String transportJson =
                     "{\"type\":\"transport\""
                     ",\"playing\":" +
                     juce::String(playing ? "true" : "false") +
                     ",\"bpm\":" + juce::String(bpm) +
-                    ",\"positionSamples\":" + juce::String(samples) +
-                    ",\"timeSigNum\":" + juce::String(timeSig.numerator) +
-                    ",\"timeSigDen\":" + juce::String(timeSig.denominator) + "}";
+                    ",\"positionSamples\":" + juce::String(positionSamples) +
+                    ",\"timeSigNum\":" + juce::String(timeSigNum) +
+                    ",\"timeSigDen\":" + juce::String(timeSigDen) + "}";
                 webViewBridge.sendToJS(transportJson);
             }
         }

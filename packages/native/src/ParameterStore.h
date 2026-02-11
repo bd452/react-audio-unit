@@ -62,7 +62,6 @@ namespace rau
     private:
         void parameterChanged(const juce::String &parameterID, float newValue) override;
 
-        juce::AudioProcessor &processor;
         juce::AudioProcessorValueTreeState *apvts = nullptr;
 
         // Map from JS param ID → APVTS slot ID

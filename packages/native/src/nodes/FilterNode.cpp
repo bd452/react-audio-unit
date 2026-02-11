@@ -19,10 +19,6 @@ namespace rau
             Peaking
         };
 
-        FilterTypeId filterTypeFromString(float typeVal)
-        {
-            return static_cast<FilterTypeId>(static_cast<int>(typeVal));
-        }
     }
 
     FilterNode::FilterNode()
@@ -157,8 +153,10 @@ namespace rau
         float filterType = getParam("filterType");
         float gainDb = getParam("gainDb");
 
-        if (cutoff != prevCutoff || resonance != prevResonance ||
-            filterType != prevFilterType || gainDb != prevGainDb)
+        if (std::abs(cutoff - prevCutoff) > 1e-6f ||
+            std::abs(resonance - prevResonance) > 1e-6f ||
+            std::abs(filterType - prevFilterType) > 0.5f ||
+            std::abs(gainDb - prevGainDb) > 1e-6f)
         {
             updateCoefficients();
             prevCutoff = cutoff;
@@ -171,11 +169,11 @@ namespace rau
         auto &out = *outputBuffer.buffer;
         const int numChannels = juce::jmin(in.getNumChannels(), out.getNumChannels());
 
-        for (int ch = 0; ch < numChannels && ch < 2; ++ch)
+        for (size_t ch = 0; ch < static_cast<size_t>(numChannels) && ch < 2; ++ch)
         {
             auto &st = state[ch];
-            const float *inData = in.getReadPointer(ch);
-            float *outData = out.getWritePointer(ch);
+            const float *inData = in.getReadPointer(static_cast<int>(ch));
+            float *outData = out.getWritePointer(static_cast<int>(ch));
 
             for (int s = 0; s < numSamples; ++s)
             {

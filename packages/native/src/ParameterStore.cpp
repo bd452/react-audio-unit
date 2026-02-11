@@ -3,8 +3,7 @@
 namespace rau
 {
 
-    ParameterStore::ParameterStore(juce::AudioProcessor &proc)
-        : processor(proc) {}
+    ParameterStore::ParameterStore(juce::AudioProcessor & /*proc*/) {}
 
     ParameterStore::~ParameterStore()
     {

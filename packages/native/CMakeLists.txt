@@ -62,10 +62,13 @@ if(NOT DEFINED RAU_BUILD_AAX)
     set(RAU_BUILD_AAX OFF CACHE BOOL "")
 endif()
 
-project(${RAU_PLUGIN_NAME} VERSION ${RAU_PLUGIN_VERSION})
+project(ReactAudioUnitPlugin VERSION ${RAU_PLUGIN_VERSION})
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Sanitize the plugin name into a valid CMake target name (no spaces)
+string(REGEX REPLACE "[^a-zA-Z0-9_]" "" RAU_TARGET_NAME "${RAU_PLUGIN_NAME}")
 
 # ---------------------------------------------------------------------------
 # Fetch JUCE
@@ -100,7 +103,7 @@ list(APPEND RAU_FORMATS Standalone)
 # ---------------------------------------------------------------------------
 set(RAU_NATIVE_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/src")
 
-juce_add_plugin(${PROJECT_NAME}
+juce_add_plugin(${RAU_TARGET_NAME}
     COMPANY_NAME                "${RAU_PLUGIN_VENDOR}"
     PLUGIN_MANUFACTURER_CODE    "${RAU_VENDOR_CODE}"
     PLUGIN_CODE                 "${RAU_PLUGIN_CODE}"
@@ -115,7 +118,7 @@ juce_add_plugin(${PROJECT_NAME}
 # ---------------------------------------------------------------------------
 # Source files
 # ---------------------------------------------------------------------------
-target_sources(${PROJECT_NAME} PRIVATE
+target_sources(${RAU_TARGET_NAME} PRIVATE
     ${RAU_NATIVE_SRC_DIR}/PluginProcessor.cpp
     ${RAU_NATIVE_SRC_DIR}/PluginEditor.cpp
     ${RAU_NATIVE_SRC_DIR}/WebViewBridge.cpp
@@ -128,18 +131,17 @@ target_sources(${PROJECT_NAME} PRIVATE
     ${RAU_NATIVE_SRC_DIR}/nodes/NodeFactory.cpp
 )
 
-target_include_directories(${PROJECT_NAME} PRIVATE
+target_include_directories(${RAU_TARGET_NAME} PRIVATE
     ${RAU_NATIVE_SRC_DIR}
 )
 
 # ---------------------------------------------------------------------------
 # Compile definitions from plugin config
 # ---------------------------------------------------------------------------
-target_compile_definitions(${PROJECT_NAME} PUBLIC
+target_compile_definitions(${RAU_TARGET_NAME} PUBLIC
     JUCE_WEB_BROWSER=1
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0
     RAU_UI_WIDTH=${RAU_UI_WIDTH}
     RAU_UI_HEIGHT=${RAU_UI_HEIGHT}
     RAU_CHANNELS_IN=${RAU_PLUGIN_CHANNELS_IN}
@@ -151,20 +153,20 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
 # ---------------------------------------------------------------------------
 if(DEFINED RAU_WEB_UI_DIR AND EXISTS "${RAU_WEB_UI_DIR}/index.html")
     file(GLOB_RECURSE RAU_WEB_UI_FILES "${RAU_WEB_UI_DIR}/*")
-    juce_add_binary_data(${PROJECT_NAME}_WebUI
+    juce_add_binary_data(${RAU_TARGET_NAME}_WebUI
         SOURCES ${RAU_WEB_UI_FILES}
     )
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_WebUI)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE RAU_EMBEDDED_UI=1)
+    target_link_libraries(${RAU_TARGET_NAME} PRIVATE ${RAU_TARGET_NAME}_WebUI)
+    target_compile_definitions(${RAU_TARGET_NAME} PRIVATE RAU_EMBEDDED_UI=1)
 else()
     message(STATUS "No embedded UI — WebView will load from dev server")
-    target_compile_definitions(${PROJECT_NAME} PRIVATE RAU_EMBEDDED_UI=0)
+    target_compile_definitions(${RAU_TARGET_NAME} PRIVATE RAU_EMBEDDED_UI=0)
 endif()
 
 # ---------------------------------------------------------------------------
 # Link JUCE modules
 # ---------------------------------------------------------------------------
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(${RAU_TARGET_NAME}
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp
