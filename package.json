@@ -1,0 +1,16 @@
+{
+  "name": "react-audio-unit",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Build AudioUnit/VST plugins with React",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

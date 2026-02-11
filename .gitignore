@@ -1,0 +1,27 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+*.tsbuildinfo
+pnpm-lock.yaml
+
+# Native build artifacts
+cmake-build-*/
+*.component
+*.vst3
+*.aaxplugin
+*.dylib
+*.dll
+*.so
+CMakeFiles/
+CMakeCache.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# JUCE
+JuceLibraryCode/

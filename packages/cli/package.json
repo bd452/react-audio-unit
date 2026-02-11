@@ -1,0 +1,26 @@
+{
+  "name": "@react-audio-unit/cli",
+  "version": "0.1.0",
+  "description": "CLI for building React Audio Unit plugins",
+  "type": "module",
+  "bin": {
+    "rau": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --banner.js '#!/usr/bin/env node'",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "commander": "^13.0.0",
+    "chalk": "^5.4.0",
+    "fs-extra": "^11.0.0",
+    "execa": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.0",
+    "typescript": "^5.7.0",
+    "tsup": "^8.0.0"
+  }
+}
