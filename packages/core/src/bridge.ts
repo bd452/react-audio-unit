@@ -29,16 +29,16 @@ export class NativeBridge {
   connect(): void {
     if (this.connected) return;
 
-    if (isJuceWebView()) {
-      // JUCE WebView: register callback for messages from C++
-      (window as any).__JUCE__.backend.addEventListener(
-        "rau_native_message",
-        (event: any) => {
-          const msg: BridgeInMessage = JSON.parse(event.detail);
-          this.dispatch(msg);
-        },
-      );
-    }
+    // Listen for C++→JS messages dispatched as CustomEvents on window.
+    // The native WebViewBridge sends: window.dispatchEvent(new CustomEvent('rau_native_message', { detail: jsonStr }))
+    window.addEventListener("rau_native_message", ((event: CustomEvent) => {
+      try {
+        const msg: BridgeInMessage = JSON.parse(event.detail);
+        this.dispatch(msg);
+      } catch {
+        // Ignore malformed messages
+      }
+    }) as EventListener);
 
     this.connected = true;
   }

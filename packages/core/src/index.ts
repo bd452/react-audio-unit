@@ -18,7 +18,8 @@ export { VirtualAudioGraph } from "./virtual-graph.js";
 export type { VirtualAudioGraphSnapshot } from "./virtual-graph.js";
 
 // Graph differ
-export { diffGraphs } from "./graph-differ.js";
+export { diffGraphs, diffGraphsFull } from "./graph-differ.js";
+export type { DiffResult } from "./graph-differ.js";
 
 // Bridge
 export { NativeBridge, bridge } from "./bridge.js";

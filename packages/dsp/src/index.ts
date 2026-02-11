@@ -1,5 +1,5 @@
 // Core audio node hook
-export { useAudioNode, resetCallIndex } from "./useAudioNode.js";
+export { useAudioNode } from "./useAudioNode.js";
 
 // I/O
 export { useInput } from "./hooks/useInput.js";

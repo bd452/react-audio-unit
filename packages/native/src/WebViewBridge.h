@@ -3,7 +3,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <functional>
 #include <string>
-#include <queue>
+#include <vector>
 #include <mutex>
 
 namespace rau
@@ -14,7 +14,10 @@ namespace rau
      * the JUCE C++ plugin and the React UI running in a WebView.
      *
      * JS → C++: via JUCE WebBrowserComponent's native function mechanism
-     * C++ → JS: via evaluateJavascript() / emitEventIfBrowserIsVisible()
+     * C++ → JS: via evaluateJavascript() dispatched on the message thread
+     *
+     * The bridge does NOT own the WebBrowserComponent. The PluginEditor
+     * creates it and passes a raw pointer here via setWebView().
      */
     class WebViewBridge
     {
@@ -23,18 +26,23 @@ namespace rau
         ~WebViewBridge();
 
         /**
-         * Create the WebBrowserComponent with the bridge wired up.
-         * Returns the component to be added to the editor.
-         *
-         * @param devServerUrl  If non-empty, load from dev server. Otherwise, serve embedded resources.
+         * Get the WebBrowserComponent::Options configured with the
+         * JS→C++ native function. The caller (PluginEditor) uses these
+         * options to create the WebBrowserComponent.
          */
-        std::unique_ptr<juce::WebBrowserComponent> createWebView(
-            const juce::String &devServerUrl = {});
+        juce::WebBrowserComponent::Options createWebViewOptions();
 
         /**
-         * Send a message to the JS side.
+         * Set the WebView to use for C++→JS messaging.
+         * Called by PluginEditor after creating the WebBrowserComponent.
+         * Pass nullptr to disconnect.
+         */
+        void setWebView(juce::WebBrowserComponent *wv);
+
+        /**
+         * Send a JSON message to the JS side.
          * Thread-safe — can be called from any thread. Messages are
-         * dispatched to the WebView on the message thread.
+         * dispatched to the WebView on the message thread via timer.
          */
         void sendToJS(const juce::String &jsonMessage);
 
@@ -43,11 +51,8 @@ namespace rau
          */
         void onMessageFromJS(std::function<void(const juce::String &)> callback);
 
-        /** Get the web view component (for layout). */
-        juce::WebBrowserComponent *getWebView() { return webView.get(); }
-
     private:
-        std::unique_ptr<juce::WebBrowserComponent> webView;
+        juce::WebBrowserComponent *webView = nullptr; // non-owning
         std::function<void(const juce::String &)> jsMessageCallback;
 
         // Queue for messages to send to JS (thread-safe)

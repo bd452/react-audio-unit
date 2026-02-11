@@ -128,6 +128,15 @@ target_sources(${RAU_TARGET_NAME} PRIVATE
     ${RAU_NATIVE_SRC_DIR}/nodes/DelayNode.cpp
     ${RAU_NATIVE_SRC_DIR}/nodes/FilterNode.cpp
     ${RAU_NATIVE_SRC_DIR}/nodes/MixNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/OscillatorNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/CompressorNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/ReverbNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/DistortionNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/PanNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/LFONode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/EnvelopeNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/MeterNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/SpectrumNode.cpp
     ${RAU_NATIVE_SRC_DIR}/nodes/NodeFactory.cpp
 )
 

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from "react";
 
 export interface MeterLevels {
   rms: number[];
@@ -7,9 +7,11 @@ export interface MeterLevels {
 
 export interface MeterProps {
   levels: MeterLevels;
-  orientation?: 'vertical' | 'horizontal';
+  orientation?: "vertical" | "horizontal";
   width?: number;
   height?: number;
+  /** Optional label displayed below/beside the meter */
+  label?: string;
 }
 
 /** Map a dB value (-100..0) to a 0..1 range */
@@ -28,42 +30,58 @@ interface PeakState {
 
 export const Meter: React.FC<MeterProps> = ({
   levels,
-  orientation = 'vertical',
+  orientation = "vertical",
   width,
   height,
+  label,
 }) => {
-  const isVertical = orientation === 'vertical';
+  const isVertical = orientation === "vertical";
   const channelCount = levels.rms.length;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const peakHoldRef = useRef<PeakState[]>([]);
   const rafRef = useRef<number>(0);
 
-  const cw = width ?? (isVertical ? Math.max(20, channelCount * 16 + (channelCount - 1) * 4 + 8) : 120);
-  const ch = height ?? (isVertical ? 120 : Math.max(20, channelCount * 16 + (channelCount - 1) * 4 + 8));
+  const cw =
+    width ??
+    (isVertical
+      ? Math.max(20, channelCount * 16 + (channelCount - 1) * 4 + 8)
+      : 120);
+  const ch =
+    height ??
+    (isVertical
+      ? 120
+      : Math.max(20, channelCount * 16 + (channelCount - 1) * 4 + 8));
 
   const getColor = useCallback(
-    (norm: number, ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+    (
+      norm: number,
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+    ) => {
       const grad = isVertical
         ? ctx.createLinearGradient(x, y + h, x, y)
         : ctx.createLinearGradient(x, y, x + w, y);
-      grad.addColorStop(0, 'var(--rau-meter-low, #4ade80)');
-      grad.addColorStop(0.6, 'var(--rau-meter-mid, #facc15)');
-      grad.addColorStop(1, 'var(--rau-meter-high, #ef4444)');
+      grad.addColorStop(0, "var(--rau-meter-low, #4ade80)");
+      grad.addColorStop(0.6, "var(--rau-meter-mid, #facc15)");
+      grad.addColorStop(1, "var(--rau-meter-high, #ef4444)");
       return grad;
     },
     [isVertical],
   );
 
   // Fallback colors since canvas can't read CSS vars directly
-  const lowColor = '#4ade80';
-  const midColor = '#facc15';
-  const highColor = '#ef4444';
-  const trackColor = '#2a2a44';
+  const lowColor = "#4ade80";
+  const midColor = "#facc15";
+  const highColor = "#ef4444";
+  const trackColor = "#2a2a44";
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
@@ -109,7 +127,8 @@ export const Meter: React.FC<MeterProps> = ({
       const holdNorm = peakHoldRef.current[ch].level;
 
       if (isVertical) {
-        const barW = (displayW - padding * 2 - (channelCount - 1) * gap) / channelCount;
+        const barW =
+          (displayW - padding * 2 - (channelCount - 1) * gap) / channelCount;
         const barH = displayH - padding * 2;
         const x = padding + ch * (barW + gap);
         const y = padding;
@@ -142,7 +161,8 @@ export const Meter: React.FC<MeterProps> = ({
           ctx.fillRect(x, holdY, barW, 2);
         }
       } else {
-        const barH = (displayH - padding * 2 - (channelCount - 1) * gap) / channelCount;
+        const barH =
+          (displayH - padding * 2 - (channelCount - 1) * gap) / channelCount;
         const barW = displayW - padding * 2;
         const x = padding;
         const y = padding + ch * (barH + gap);
@@ -176,7 +196,17 @@ export const Meter: React.FC<MeterProps> = ({
         }
       }
     }
-  }, [levels, channelCount, cw, ch, isVertical, lowColor, midColor, highColor, trackColor]);
+  }, [
+    levels,
+    channelCount,
+    cw,
+    ch,
+    isVertical,
+    lowColor,
+    midColor,
+    highColor,
+    trackColor,
+  ]);
 
   useEffect(() => {
     draw();
@@ -200,15 +230,35 @@ export const Meter: React.FC<MeterProps> = ({
   const canvasStyle: React.CSSProperties = {
     width: cw,
     height: ch,
-    display: 'block',
+    display: "block",
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={canvasStyle}
-      role="meter"
-      aria-label="Level meter"
-    />
+    <div
+      style={{
+        display: "inline-flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        style={canvasStyle}
+        role="meter"
+        aria-label={label ? `${label} level meter` : "Level meter"}
+      />
+      {label && (
+        <span
+          style={{
+            color: "var(--rau-text-dim, #8888aa)",
+            fontSize: "calc(var(--rau-font-size, 11px) * 0.9)",
+            fontFamily: "var(--rau-font-family, sans-serif)",
+          }}
+        >
+          {label}
+        </span>
+      )}
+    </div>
   );
 };

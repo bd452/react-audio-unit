@@ -25,16 +25,6 @@ namespace rau
         PluginProcessor &processor;
         std::unique_ptr<juce::WebBrowserComponent> webView;
 
-        // Timer for flushing C++ → JS messages
-        class BridgeTimer : public juce::Timer
-        {
-        public:
-            BridgeTimer(PluginEditor &e) : editor(e) {}
-            void timerCallback() override;
-            PluginEditor &editor;
-        };
-        BridgeTimer bridgeTimer{*this};
-
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginEditor)
     };
 

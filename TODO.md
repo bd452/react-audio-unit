@@ -11,23 +11,17 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] `diffGraphs()` algorithm (add/remove/update/connect/disconnect)
 - [x] `AudioGraphContext` and `PluginHost` provider
 - [x] Graph reconciliation in `useEffect` after each render
-- [ ] **Call `resetCallIndex()` before each render cycle** — currently `globalCallIndex` in `useAudioNode.ts` is never reset, causing node ID collisions across renders. `PluginHost` needs to reset it at the start of each render pass.
-- [ ] **Fast-path parameter-only updates** — the SUMMARY spec describes detecting when only params changed (no topology change) and doing a direct atomic write instead of a full graph diff. Currently every render does a full diff.
+- [x] **Call `resetCallIndex()` before each render cycle** — moved counter into `VirtualAudioGraph`, resets on `clear()`, exposed via context's `nextCallIndex()`.
+- [x] **Fast-path parameter-only updates** — `diffGraphsFull()` now reports `paramOnly` flag; `PluginHost` sends direct `paramUpdate` messages instead of full graph ops when only params changed.
 
 ### JS ↔ C++ Bridge
 - [x] `NativeBridge` class with JUCE WebView detection
 - [x] JS → Native messaging via `__JUCE__.backend.emitEvent`
 - [x] Native → JS messaging via `evaluateJavascript`
 - [x] Bridge protocol types (`BridgeOutMessage`, `BridgeInMessage`)
-- [ ] **Fix `WebViewBridge.cpp` — `createWebView()` is broken** — the function resets its own `webView` pointer and returns `nullptr`. The PluginEditor creates the WebView directly instead, bypassing the bridge. Need to either fix `createWebView()` or refactor so the bridge doesn't own WebView creation (just provides config/callbacks).
-- [ ] **Fix PluginEditor JS→C++ message path** — the `rau_send` native function handler in `PluginEditor.cpp` has broken callback wiring. Messages from JS never actually reach `PluginProcessor::handleJSMessage()`.
-- [ ] **String-to-enum parameter conversion** — JS sends string params like `filterType: "lowpass"`, but C++ `AudioNodeBase` stores all params as `atomic<float>`. The bridge (`PluginProcessor::handleJSMessage`) does `static_cast<float>(prop.value)` which turns strings into `0.0f`. Need a conversion layer that maps:
-  - `filterType`: "lowpass"→0, "highpass"→1, "bandpass"→2, "notch"→3, "allpass"→4, "lowshelf"→5, "highshelf"→6, "peaking"→7
-  - `waveform`: "sine"→0, "saw"→1, "square"→2, "triangle"→3
-  - `distortionType`: "soft"→0, "hard"→1, "tanh"→2, "atan"→3, "foldback"→4
-  - `law` (pan): "linear"→0, "equalPower"→1
-  - `shape` (LFO): "sine"→0, "triangle"→1, "saw"→2, "square"→3, "random"→4
-  - `meterType`: "peak"→0, "rms"→1, "both"→2
+- [x] **Fix `WebViewBridge.cpp`** — removed broken `createWebView()`, replaced with `createWebViewOptions()` + `setWebView()` pattern. Bridge no longer owns the WebBrowserComponent.
+- [x] **Fix PluginEditor JS→C++ message path** — PluginEditor now uses `createWebViewOptions()` from the bridge (which registers the `rau_js_message` native function), then calls `setWebView()` to enable C++→JS messaging. Messages flow: JS → native function → bridge callback → `handleJSMessage()`.
+- [x] **String-to-enum parameter conversion** — added `stringParamToFloat()` and `varToFloat()` in `PluginProcessor.cpp` that maps string values for `filterType`, `waveform`, `distortionType`, `law`, `shape`, `meterType` to their float enum equivalents.
 - [ ] **Dev/browser mock bridge** — `__RAU_DEV_BRIDGE__` is referenced in `bridge.ts` but never implemented. Need a Web Audio API–backed mock so plugins can be previewed in a browser without the native harness.
 
 ### Native Audio Engine
@@ -45,23 +39,23 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] `FilterNode` — biquad with 8 filter types, direct-form-II
 - [x] `MixNode` — smoothed crossfade between two inputs
 - [x] `NodeFactory` — creates nodes by type string
-- [ ] **OscillatorNode** — sine/saw/square/triangle waveforms, frequency from param or MIDI input, detune, polyphonic voice management
-- [ ] **CompressorNode** — RMS/peak detection, threshold/ratio/attack/release/knee, makeup gain, optional sidechain input
-- [ ] **ReverbNode** — algorithmic reverb (Freeverb or Schroeder), room size, damping, pre-delay, dry/wet
-- [ ] **DistortionNode** — waveshaper with soft/hard/tanh/atan/foldback curves, drive, output level, dry/wet
-- [ ] **PanNode** — stereo panner with linear and equal-power laws
-- [ ] **LFONode** — low-frequency oscillator (sine/tri/saw/square/random), rate, depth, phase, tempo sync
-- [ ] **EnvelopeNode** — ADSR triggered by MIDI note events, outputs 0–1 control signal
-- [ ] **MeterNode** — computes RMS/peak per channel, sends data back to JS via bridge at configurable refresh rate
-- [ ] **SpectrumNode** — FFT analysis, sends magnitude array back to JS via bridge
+- [x] **OscillatorNode** — sine/saw/square/triangle waveforms, frequency smoothing, detune support
+- [x] **CompressorNode** — peak detection, threshold/ratio/attack/release/knee, makeup gain, sidechain input
+- [x] **ReverbNode** — JUCE Reverb (Freeverb), room size, damping, dry/wet
+- [x] **DistortionNode** — soft/hard/tanh/atan/foldback waveshaper, drive, output level, dry/wet
+- [x] **PanNode** — stereo panner with linear and equal-power laws, smoothed
+- [x] **LFONode** — sine/tri/saw/square/random, rate, depth, phase offset
+- [x] **EnvelopeNode** — ADSR with gate input or parameter trigger
+- [x] **MeterNode** — RMS/peak per channel, atomic data for bridge readout
+- [x] **SpectrumNode** — 2048-point FFT, Hann window, magnitude output
+- [x] Register all new nodes in `NodeFactory`
 - [ ] **ConvolverNode** — IR-based convolution reverb (load IR from binary data)
-- [ ] Register all new nodes in `NodeFactory`
 
 ### Parameter Management
 - [x] `ParameterStore` with APVTS slot mapping
 - [x] `useParameter` hook with DAW automation sync
-- [ ] **Fix `ParameterStore::registerParameter()` range mapping** — pre-allocated slots have fixed 0–1 range. When a JS parameter registers with e.g. min=20, max=20000, the actual range isn't updated. Need to either: (a) defer parameter creation until registration, or (b) use `NormalisableRange` mapping in get/set.
-- [ ] **Implement `ParameterStore::restoreStateFromJson()`** — currently a stub `(void)json`. Need to parse JSON and call `setParameterValue()` for each key.
+- [x] **Fix `ParameterStore::registerParameter()` range mapping** — added `rangeMap` to store min/max per slot; `setParameterValue`, `getParameterValue`, and `parameterChanged` now properly convert between actual values and 0–1 normalized range.
+- [x] **Implement `ParameterStore::restoreStateFromJson()`** — now parses JSON with JUCE's JSON parser and calls `setParameterValue()` for each key.
 - [ ] **Parameter `curve` support** — `useParameter` accepts `curve: 'logarithmic' | 'exponential'` but the native side doesn't apply skew to the `NormalisableRange`.
 
 ### I/O Hooks
@@ -77,14 +71,14 @@ Status legend: done items are checked, remaining items are unchecked.
 - [x] `rau create` — scaffolds from template, updates names
 - [x] `rau dev` — starts Vite dev server
 - [x] `rau build` — invokes Vite then CMake
-- [ ] **Fix `loadPluginConfig()` for TypeScript files** — currently tries regex extraction + `Function()` constructor which is fragile and fails for many configs. Should use `tsx` or `jiti` to properly evaluate `.ts` config files.
+- [x] **Fix `loadPluginConfig()` for TypeScript files** — now uses `jiti` to properly evaluate `.ts` config files natively.
 - [ ] **`rau validate` command** — run `auval` (macOS) and VST3 validator against built plugins
 - [ ] **Cross-platform build matrix in `rau build`** — `build:mac`, `build:win`, `build:all` flags from the spec
 
 ### Templates
 - [x] `effect` template with basic gain plugin
-- [ ] **`instrument` template** — synth with MIDI input, oscillator, envelope, filter
-- [ ] **`analyzer` template** — pass-through with meter + spectrum display
+- [x] **`instrument` template** — synth with oscillator, filter, envelope, volume controls
+- [x] **`analyzer` template** — pass-through with meter + spectrum display
 
 ### Development Mode
 - [x] Vite dev server with HMR
@@ -94,45 +88,45 @@ Status legend: done items are checked, remaining items are unchecked.
 ### Production Build
 - [x] Vite bundles the React app
 - [x] CMake builds with `juce_add_binary_data` for embedded UI
-- [ ] **Implement embedded UI resource serving** — `PluginEditor.cpp` uses a `data:text/html` placeholder when `RAU_EMBEDDED_UI=1`. Need to implement JUCE's `WebBrowserComponent::Options::withResourceProvider()` to serve files from `BinaryData`.
+- [x] **Implement embedded UI resource serving** — PluginEditor now uses `withResourceProvider()` to serve files from BinaryData, with proper MIME type detection.
 - [ ] **Build output reporting** — `rau build` tries to list output files but the path logic is fragile. Verify it works for AU/VST3/Standalone outputs.
 
 ### UI Components
 - [x] Knob (SVG, drag interaction, value display)
 - [x] Slider (horizontal/vertical)
 - [x] Toggle
-- [x] Select
-- [x] Meter (canvas-based, peak hold, multi-channel)
-- [x] Panel
+- [x] Select (supports string[] and { value, label }[] options)
+- [x] Meter (canvas-based, peak hold, multi-channel, label support)
+- [x] Panel (layout container with `direction` and `gap` props)
 - [x] XYPad
-- [ ] **Waveform display component** — show a time-domain waveform
-- [ ] **Spectrum display component** — show frequency spectrum from `useSpectrum` data
-- [ ] **Keyboard component** — on-screen MIDI keyboard for instrument plugins
-- [ ] **PresetBrowser component** — save/load/browse presets
-- [ ] **Light theme** — `themes/light.css` (only dark exists)
+- [x] **Waveform display component** — canvas-based time-domain waveform renderer
+- [x] **Spectrum display component** — canvas-based frequency bar graph with log scale support
+- [x] **Keyboard component** — on-screen MIDI keyboard with note on/off callbacks
+- [x] **PresetBrowser component** — save/load/browse/delete presets with prev/next navigation
+- [x] **Light theme** — `themes/light.css`
 
 ---
 
 ## Phase 3: Full DSP Library
 
 ### Generators
-- [ ] Oscillator (sine/saw/square/triangle) — JS hook exists, C++ node missing
-- [ ] LFO — JS hook exists, C++ node missing
-- [ ] Envelope (ADSR) — JS hook exists, C++ node missing
+- [x] Oscillator (sine/saw/square/triangle) — JS hook + C++ node
+- [x] LFO — JS hook + C++ node
+- [x] Envelope (ADSR) — JS hook + C++ node
 
 ### Effects
-- [ ] Compressor — JS hook exists, C++ node missing
-- [ ] Reverb (algorithmic) — JS hook exists, C++ node missing
-- [ ] Reverb (convolution/IR) — JS hook exists, C++ node missing
-- [ ] Distortion/Waveshaper — JS hook exists, C++ node missing
-- [ ] Panner — JS hook exists, C++ node missing
-- [ ] Chorus — composable from delay + LFO (needs LFO node first)
+- [x] Compressor — JS hook + C++ node
+- [x] Reverb (algorithmic) — JS hook + C++ node
+- [ ] Reverb (convolution/IR) — JS hook exists, C++ ConvolverNode missing
+- [x] Distortion/Waveshaper — JS hook + C++ node
+- [x] Panner — JS hook + C++ node
+- [ ] Chorus — composable from delay + LFO (needs testing)
 - [ ] Flanger — composable from short delay + LFO
 - [ ] Phaser — chain of allpass filters modulated by LFO
 
 ### Analysis
-- [ ] Meter node — JS hook exists, C++ node needs to compute RMS/peak and send to JS
-- [ ] Spectrum node — JS hook exists, C++ node needs FFT and send magnitudes to JS
+- [x] Meter node — JS hook + C++ node (computes RMS/peak)
+- [x] Spectrum node — JS hook + C++ node (FFT magnitudes)
 
 ### MIDI
 - [ ] MIDI input node — JS hook exists, C++ side needs to forward MIDI events from `processBlock`'s `MidiBuffer` into the graph
@@ -149,8 +143,8 @@ Status legend: done items are checked, remaining items are unchecked.
 ## Phase 4: Production Readiness
 
 ### State Persistence
-- [ ] **Fix state save** — `PluginProcessor::getStateInformation()` only saves APVTS state. The JS-side state (graph topology, non-parameter state) is not included.
-- [ ] **Fix state recall** — `setStateInformation()` restores APVTS but doesn't notify JS to rebuild the graph. Need to send a `restoreState` message to JS.
+- [x] **Fix state save** — `PluginProcessor::getStateInformation()` now saves both APVTS state and JS-side parameter state (via `paramStore.getStateAsJson()`).
+- [x] **Fix state recall** — `setStateInformation()` now restores APVTS state, sends `restoreState` message to JS, and calls `paramStore.restoreStateFromJson()`.
 - [ ] **Preset system** — save/load named presets, export/import preset files
 
 ### Cross-Platform
@@ -189,9 +183,9 @@ Status legend: done items are checked, remaining items are unchecked.
 
 ---
 
-## Critical Bugs (fix before anything else)
+## Critical Bugs (all fixed)
 
-1. **`globalCallIndex` never resets** — node IDs collide across renders. `PluginHost` must call `resetCallIndex()` before children render.
-2. **PluginEditor bridge wiring broken** — JS messages from the WebView never reach `handleJSMessage()`. The `rau_send` native function handler is a no-op.
-3. **String params silently become 0** — `filterType: "lowpass"` is cast to `float` as `0.0f`. All string-enum params are broken.
-4. **WebViewBridge.createWebView() returns nullptr** — dead code that confuses the architecture. Either fix or remove.
+1. ~~**`globalCallIndex` never resets**~~ — Fixed: counter moved into `VirtualAudioGraph`, resets on `clear()`, exposed via `nextCallIndex()` on the context.
+2. ~~**PluginEditor bridge wiring broken**~~ — Fixed: refactored `WebViewBridge` to provide options (with native function), PluginEditor creates WebView with those options and calls `setWebView()`.
+3. ~~**String params silently become 0**~~ — Fixed: added `varToFloat()` in `PluginProcessor.cpp` with conversion tables for all string-enum params.
+4. ~~**WebViewBridge.createWebView() returns nullptr**~~ — Fixed: removed `createWebView()`, replaced with `createWebViewOptions()` + `setWebView()` pattern.

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import type { Signal } from "@react-audio-unit/core";
 import { bridge } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
@@ -10,6 +10,11 @@ export interface MeterData {
   peak: number[]; // per-channel peak levels in dB
 }
 
+export interface MeterOptions {
+  type?: MeterType;
+  refreshRate?: number;
+}
+
 /**
  * useMeter — level metering that sends analysis data back to JS.
  *
@@ -17,16 +22,27 @@ export interface MeterData {
  * at the specified refresh rate. The audio signal passes through
  * unmodified.
  *
- * @param input       - Signal to analyze
- * @param type        - Meter type
- * @param refreshRate - UI updates per second (default 30)
+ * Can be called as:
+ *   useMeter(input)
+ *   useMeter(input, type)
+ *   useMeter(input, { type, refreshRate })
  */
 export function useMeter(
   input: Signal,
-  type: MeterType = "both",
+  typeOrOptions?: MeterType | MeterOptions,
   refreshRate = 30,
 ): MeterData {
-  const signal = useAudioNode("meter", { meterType: type, refreshRate }, [
+  let type: MeterType = "both";
+  let rate = refreshRate;
+
+  if (typeof typeOrOptions === "string") {
+    type = typeOrOptions;
+  } else if (typeOrOptions && typeof typeOrOptions === "object") {
+    type = typeOrOptions.type ?? "both";
+    rate = typeOrOptions.refreshRate ?? refreshRate;
+  }
+
+  const signal = useAudioNode("meter", { meterType: type, refreshRate: rate }, [
     input,
   ]);
 

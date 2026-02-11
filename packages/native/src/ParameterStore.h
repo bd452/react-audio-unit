@@ -69,6 +69,9 @@ namespace rau
         std::unordered_map<std::string, std::string> slotToId;
         int nextSlot = 0;
 
+        // Range mapping: slot ID → {min, max}
+        std::unordered_map<std::string, std::pair<float, float>> rangeMap;
+
         std::function<void(const std::string &, float)> changeCallback;
     };
 
