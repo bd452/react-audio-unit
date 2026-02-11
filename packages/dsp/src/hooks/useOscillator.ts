@@ -18,16 +18,26 @@ export interface OscillatorParams {
 /**
  * useOscillator — generates audio from a waveform.
  *
- * If a MIDI signal is provided as input, frequency is derived from
- * incoming MIDI note events (polyphonic). Otherwise, uses the
- * `frequency` parameter for a fixed tone.
- *
- * @param midi - Optional MIDI input signal for pitch tracking
+ * Can be called two ways:
+ *   useOscillator(params)             — fixed-frequency generator
+ *   useOscillator(midiSignal, params) — MIDI-driven (pitch from notes)
  */
 export function useOscillator(
-  midi: Signal | null,
-  params: OscillatorParams,
+  paramsOrMidi: OscillatorParams | Signal | null,
+  maybeParams?: OscillatorParams,
 ): Signal {
+  let midi: Signal | null = null;
+  let params: OscillatorParams;
+
+  if (maybeParams !== undefined) {
+    // Called as useOscillator(midi, params)
+    midi = paramsOrMidi as Signal | null;
+    params = maybeParams;
+  } else {
+    // Called as useOscillator(params)
+    params = paramsOrMidi as OscillatorParams;
+  }
+
   const inputs = midi ? [midi] : [];
   return useAudioNode(
     "oscillator",

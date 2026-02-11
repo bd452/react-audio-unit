@@ -10,6 +10,7 @@ import type { AudioNodeDescriptor, ConnectionDescriptor } from "./types.js";
 export class VirtualAudioGraph {
   private nodes = new Map<string, AudioNodeDescriptor>();
   private outputNodeId: string | null = null;
+  private callIndex = 0;
 
   registerNode(descriptor: AudioNodeDescriptor): void {
     this.nodes.set(descriptor.id, descriptor);
@@ -31,9 +32,18 @@ export class VirtualAudioGraph {
     return this.nodes;
   }
 
+  /**
+   * Get the next call index and increment. Used by useAudioNode to
+   * generate unique node IDs within a render cycle.
+   */
+  nextCallIndex(): number {
+    return this.callIndex++;
+  }
+
   clear(): void {
     this.nodes.clear();
     this.outputNodeId = null;
+    this.callIndex = 0;
   }
 
   /**

@@ -6,16 +6,6 @@ import {
 } from "@react-audio-unit/core";
 
 /**
- * Render-cycle counter used to generate stable node IDs.
- * Reset at the start of each render via the reconciler.
- */
-let globalCallIndex = 0;
-
-export function resetCallIndex(): void {
-  globalCallIndex = 0;
-}
-
-/**
  * useAudioNode — the primitive that every DSP hook builds on.
  *
  * Registers a node of the given `type` in the virtual audio graph during
@@ -37,10 +27,12 @@ export function useAudioNode(
 
   // Stable node ID — assigned once on first render, never changes.
   // The call-order index ensures uniqueness within a component,
-  // and the type prefix aids debugging.
+  // and the type prefix aids debugging. The counter lives on the
+  // VirtualAudioGraph and resets when the graph is cleared after
+  // each render cycle.
   const nodeIdRef = useRef<string | null>(null);
   if (nodeIdRef.current === null) {
-    nodeIdRef.current = `${type}_${globalCallIndex++}`;
+    nodeIdRef.current = `${type}_${ctx.nextCallIndex()}`;
   }
   const nodeId = nodeIdRef.current;
 

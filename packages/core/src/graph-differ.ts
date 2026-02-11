@@ -2,6 +2,17 @@ import type { GraphOp } from "./types.js";
 import type { VirtualAudioGraphSnapshot } from "./virtual-graph.js";
 
 /**
+ * Result of a graph diff. If `paramOnly` is true, only parameter
+ * values changed — the topology is identical. The caller can use
+ * this to take a fast-path (direct atomic writes) instead of
+ * sending full graph operations.
+ */
+export interface DiffResult {
+  ops: GraphOp[];
+  paramOnly: boolean;
+}
+
+/**
  * Diff two virtual audio graph snapshots and return the minimal set of
  * operations needed to transform `prev` into `next`.
  *
@@ -11,7 +22,18 @@ export function diffGraphs(
   prev: VirtualAudioGraphSnapshot | null,
   next: VirtualAudioGraphSnapshot,
 ): GraphOp[] {
+  return diffGraphsFull(prev, next).ops;
+}
+
+/**
+ * Full diff that also reports whether only parameters changed.
+ */
+export function diffGraphsFull(
+  prev: VirtualAudioGraphSnapshot | null,
+  next: VirtualAudioGraphSnapshot,
+): DiffResult {
   const ops: GraphOp[] = [];
+  let topologyChanged = false;
 
   const prevNodes = prev?.nodes ?? new Map();
   const nextNodes = next.nodes;
@@ -28,6 +50,7 @@ export function diffGraphs(
         });
       }
       ops.push({ op: "removeNode", nodeId: id });
+      topologyChanged = true;
     }
   }
 
@@ -47,6 +70,7 @@ export function diffGraphs(
           to: { nodeId: id, inlet: conn.toInlet },
         });
       }
+      topologyChanged = true;
     }
   }
 
@@ -73,6 +97,7 @@ export function diffGraphs(
           from: { nodeId: conn.fromNodeId, outlet: conn.fromOutlet },
           to: { nodeId: id, inlet: conn.toInlet },
         });
+        topologyChanged = true;
       }
     }
     // Removed connections
@@ -84,6 +109,7 @@ export function diffGraphs(
           from: { nodeId: conn.fromNodeId, outlet: conn.fromOutlet },
           to: { nodeId: id, inlet: conn.toInlet },
         });
+        topologyChanged = true;
       }
     }
   }
@@ -91,9 +117,10 @@ export function diffGraphs(
   // --- 4. Output node change --------------------------------------------------
   if (next.outputNodeId !== prev?.outputNodeId && next.outputNodeId) {
     ops.push({ op: "setOutput", nodeId: next.outputNodeId });
+    topologyChanged = true;
   }
 
-  return ops;
+  return { ops, paramOnly: !topologyChanged && ops.length > 0 };
 }
 
 // ---------------------------------------------------------------------------

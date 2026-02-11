@@ -15,10 +15,29 @@ export interface EnvelopeParams {
 /**
  * useEnvelope — ADSR envelope generator.
  *
- * Triggered by MIDI note events on the input signal.
+ * Can be called two ways:
+ *   useEnvelope(params)            — gate controlled via parameter
+ *   useEnvelope(gateSignal, params) — gate from input signal (e.g. MIDI)
+ *
  * Returns a Signal representing the envelope amplitude (0–1).
  */
-export function useEnvelope(midi: Signal, params: EnvelopeParams): Signal {
+export function useEnvelope(
+  paramsOrGate: EnvelopeParams | Signal,
+  maybeParams?: EnvelopeParams,
+): Signal {
+  let gate: Signal | null = null;
+  let params: EnvelopeParams;
+
+  if (maybeParams !== undefined) {
+    // Called as useEnvelope(gateSignal, params)
+    gate = paramsOrGate as Signal;
+    params = maybeParams;
+  } else {
+    // Called as useEnvelope(params)
+    params = paramsOrGate as EnvelopeParams;
+  }
+
+  const inputs = gate ? [gate] : [];
   return useAudioNode(
     "envelope",
     {
@@ -27,6 +46,6 @@ export function useEnvelope(midi: Signal, params: EnvelopeParams): Signal {
       sustain: params.sustain,
       release: params.release,
     },
-    [midi],
+    inputs,
   );
 }

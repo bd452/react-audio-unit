@@ -11,7 +11,7 @@ import {
   VirtualAudioGraph,
   type VirtualAudioGraphSnapshot,
 } from "./virtual-graph.js";
-import { diffGraphs } from "./graph-differ.js";
+import { diffGraphsFull } from "./graph-differ.js";
 import { bridge, NativeBridge } from "./bridge.js";
 import type {
   AudioNodeDescriptor,
@@ -27,6 +27,7 @@ import type {
 export interface AudioGraphContextValue {
   registerNode(descriptor: AudioNodeDescriptor): void;
   setOutputNode(nodeId: string): void;
+  nextCallIndex(): number;
   bridge: NativeBridge;
 }
 
@@ -204,6 +205,9 @@ export function PluginHost({ children }: PluginHostProps) {
     setOutputNode(nodeId: string) {
       graphRef.current.setOutputNode(nodeId);
     },
+    nextCallIndex() {
+      return graphRef.current.nextCallIndex();
+    },
     bridge,
   }).current;
 
@@ -233,13 +237,34 @@ export function PluginHost({ children }: PluginHostProps) {
   // DSP hooks have registered their nodes into graphRef.current.
   useEffect(() => {
     const nextSnapshot = graphRef.current.snapshot();
-    const ops = diffGraphs(prevSnapshotRef.current, nextSnapshot);
+    const { ops, paramOnly } = diffGraphsFull(
+      prevSnapshotRef.current,
+      nextSnapshot,
+    );
+
     if (ops.length > 0) {
-      bridge.sendGraphOps(ops);
+      if (paramOnly) {
+        // Fast path: only parameters changed — send direct atomic updates
+        // instead of full graph operations. This avoids the op queue and
+        // topological re-sort on the audio thread.
+        for (const op of ops) {
+          if (op.op === "updateParams") {
+            for (const [paramName, value] of Object.entries(op.params)) {
+              if (typeof value === "number") {
+                bridge.sendParamUpdate(op.nodeId, paramName, value);
+              }
+            }
+          }
+        }
+      } else {
+        bridge.sendGraphOps(ops);
+      }
     }
+
     prevSnapshotRef.current = nextSnapshot;
 
     // Clear the live graph for the next render cycle
+    // (this also resets the call index counter)
     graphRef.current.clear();
   });
 

@@ -25,10 +25,11 @@ namespace rau
 
             for (auto &msg : messages)
             {
-                // Dispatch as a custom event that the JS bridge listens for
+                // Dispatch as a CustomEvent that the JS bridge listens for.
+                // The JS side's NativeBridge.connect() registers a listener
+                // for 'rau_native_message' events.
                 auto js = juce::String(
-                              "window.__JUCE__ && window.__JUCE__.backend && "
-                              "window.__JUCE__.backend.dispatchEvent("
+                              "window.dispatchEvent("
                               "new CustomEvent('rau_native_message', { detail: ") +
                           msg.quoted() + " }));";
                 bridge.webView->evaluateJavascript(js);
@@ -52,61 +53,43 @@ namespace rau
         sendTimer->stopTimer();
     }
 
-    std::unique_ptr<juce::WebBrowserComponent> WebViewBridge::createWebView(
-        const juce::String &devServerUrl)
+    juce::WebBrowserComponent::Options WebViewBridge::createWebViewOptions()
     {
-
         juce::WebBrowserComponent::Options options;
 
-        // Register native function for JS → C++ messages
+        // Register native function for JS → C++ messages.
+        // The JS bridge calls: window.__JUCE__.backend.emitEvent("rau_js_message", jsonStr)
+        // JUCE translates that into a call to this native function.
         options = options.withNativeFunction(
             "rau_js_message",
-            [this](const juce::Array<juce::var> &args, juce::WebBrowserComponent::NativeFunctionCompletion)
+            [this](const juce::Array<juce::var> &args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion)
             {
                 if (args.size() > 0 && jsMessageCallback)
                 {
                     jsMessageCallback(args[0].toString());
                 }
+                completion({});
             });
 
-        // Allow access to local resources
         options = options.withKeepPageLoadedWhenBrowserIsHidden();
 
-        auto browser = std::make_unique<juce::WebBrowserComponent>(options);
+        return options;
+    }
 
-        if (devServerUrl.isNotEmpty())
+    void WebViewBridge::setWebView(juce::WebBrowserComponent *wv)
+    {
+        webView = wv;
+
+        if (webView != nullptr)
         {
-            browser->goToURL(devServerUrl);
+            // Start the send timer (60fps message flush rate)
+            sendTimer->startTimerHz(60);
         }
         else
         {
-#if RAU_EMBEDDED_UI
-            // Serve from embedded binary data
-            // The resource provider is set up via JUCE's WebBrowserComponent options
-            browser->goToURL("http://localhost/index.html");
-#else
-            browser->goToURL("http://localhost:5173");
-#endif
+            sendTimer->stopTimer();
         }
-
-        webView = std::move(browser);
-
-        // Start the send timer (60fps message flush rate)
-        sendTimer->startTimerHz(60);
-
-        // Return a separate reference — we keep ownership
-        // Actually, the caller owns it. We keep a raw pointer.
-        auto result = std::make_unique<juce::WebBrowserComponent>(options);
-
-        // Re-think: the caller should get the actual webView.
-        // We'll store a raw pointer and give ownership to the caller.
-        webView.reset();
-        webView.reset(result.get());
-
-        // This pattern doesn't work well. Let's restructure:
-        // The editor creates the WebBrowserComponent, we just configure it.
-
-        return nullptr; // See PluginEditor for actual creation
     }
 
     void WebViewBridge::sendToJS(const juce::String &jsonMessage)

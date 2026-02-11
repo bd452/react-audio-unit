@@ -1,9 +1,17 @@
-import React, { useCallback } from 'react';
+import React, { useCallback } from "react";
+
+export interface SelectOption {
+  value: string;
+  label: string;
+}
 
 export interface SelectProps {
-  options: string[];
-  value: number;
-  onChange: (index: number) => void;
+  /** Options as strings or { value, label } objects */
+  options: string[] | SelectOption[];
+  /** Current value (string or number index) */
+  value: string | number;
+  /** Called with the selected value */
+  onChange: (value: string) => void;
   label?: string;
 }
 
@@ -15,41 +23,49 @@ export const Select: React.FC<SelectProps> = ({
 }) => {
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      onChange(Number(e.target.value));
+      onChange(e.target.value);
     },
     [onChange],
   );
 
+  // Normalize options to { value, label } objects
+  const normalizedOptions: SelectOption[] = options.map((opt, i) => {
+    if (typeof opt === "string") {
+      return { value: String(i), label: opt };
+    }
+    return opt;
+  });
+
   const containerStyle: React.CSSProperties = {
-    display: 'inline-flex',
-    flexDirection: 'column',
+    display: "inline-flex",
+    flexDirection: "column",
     gap: 4,
-    fontFamily: 'var(--rau-font-family, sans-serif)',
-    fontSize: 'var(--rau-font-size, 11px)',
-    color: 'var(--rau-text, #e0e0e0)',
+    fontFamily: "var(--rau-font-family, sans-serif)",
+    fontSize: "var(--rau-font-size, 11px)",
+    color: "var(--rau-text, #e0e0e0)",
   };
 
   const labelStyle: React.CSSProperties = {
-    color: 'var(--rau-text-dim, #8888aa)',
-    fontSize: 'calc(var(--rau-font-size, 11px) * 0.9)',
+    color: "var(--rau-text-dim, #8888aa)",
+    fontSize: "calc(var(--rau-font-size, 11px) * 0.9)",
     lineHeight: 1.2,
   };
 
   const selectStyle: React.CSSProperties = {
-    appearance: 'none',
-    background: 'var(--rau-surface, #252540)',
-    color: 'var(--rau-text, #e0e0e0)',
-    border: '1px solid var(--rau-border, #3a3a5c)',
-    borderRadius: 'var(--rau-radius, 6px)',
-    padding: '4px 24px 4px 8px',
-    fontFamily: 'inherit',
-    fontSize: 'inherit',
-    cursor: 'pointer',
-    outline: 'none',
+    appearance: "none",
+    background: "var(--rau-surface, #252540)",
+    color: "var(--rau-text, #e0e0e0)",
+    border: "1px solid var(--rau-border, #3a3a5c)",
+    borderRadius: "var(--rau-radius, 6px)",
+    padding: "4px 24px 4px 8px",
+    fontFamily: "inherit",
+    fontSize: "inherit",
+    cursor: "pointer",
+    outline: "none",
     backgroundImage:
-      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M0 0l5 6 5-6z\' fill=\'%238888aa\'/%3E%3C/svg%3E")',
-    backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'right 8px center',
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238888aa'/%3E%3C/svg%3E\")",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 8px center",
     minWidth: 80,
   };
 
@@ -58,13 +74,13 @@ export const Select: React.FC<SelectProps> = ({
       {label && <span style={labelStyle}>{label}</span>}
       <select
         style={selectStyle}
-        value={value}
+        value={String(value)}
         onChange={handleChange}
-        aria-label={label ?? 'Select'}
+        aria-label={label ?? "Select"}
       >
-        {options.map((opt, i) => (
-          <option key={i} value={i}>
-            {opt}
+        {normalizedOptions.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
           </option>
         ))}
       </select>

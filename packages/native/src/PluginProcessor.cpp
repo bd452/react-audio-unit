@@ -5,6 +5,122 @@
 namespace rau
 {
 
+    // ---------------------------------------------------------------------------
+    // String-to-enum conversion tables for typed parameters
+    // ---------------------------------------------------------------------------
+
+    static float stringParamToFloat(const juce::String &paramName, const juce::String &value)
+    {
+        // Filter types
+        if (paramName == "filterType")
+        {
+            if (value == "lowpass")
+                return 0.0f;
+            if (value == "highpass")
+                return 1.0f;
+            if (value == "bandpass")
+                return 2.0f;
+            if (value == "notch")
+                return 3.0f;
+            if (value == "allpass")
+                return 4.0f;
+            if (value == "lowshelf")
+                return 5.0f;
+            if (value == "highshelf")
+                return 6.0f;
+            if (value == "peaking")
+                return 7.0f;
+            return 0.0f;
+        }
+
+        // Oscillator waveforms
+        if (paramName == "waveform")
+        {
+            if (value == "sine")
+                return 0.0f;
+            if (value == "saw")
+                return 1.0f;
+            if (value == "square")
+                return 2.0f;
+            if (value == "triangle")
+                return 3.0f;
+            return 0.0f;
+        }
+
+        // Distortion types
+        if (paramName == "distortionType")
+        {
+            if (value == "soft")
+                return 0.0f;
+            if (value == "hard")
+                return 1.0f;
+            if (value == "tanh")
+                return 2.0f;
+            if (value == "atan")
+                return 3.0f;
+            if (value == "foldback")
+                return 4.0f;
+            return 0.0f;
+        }
+
+        // Pan law
+        if (paramName == "law")
+        {
+            if (value == "linear")
+                return 0.0f;
+            if (value == "equalPower")
+                return 1.0f;
+            return 0.0f;
+        }
+
+        // LFO shape
+        if (paramName == "shape")
+        {
+            if (value == "sine")
+                return 0.0f;
+            if (value == "triangle")
+                return 1.0f;
+            if (value == "saw")
+                return 2.0f;
+            if (value == "square")
+                return 3.0f;
+            if (value == "random")
+                return 4.0f;
+            return 0.0f;
+        }
+
+        // Meter type
+        if (paramName == "meterType")
+        {
+            if (value == "peak")
+                return 0.0f;
+            if (value == "rms")
+                return 1.0f;
+            if (value == "both")
+                return 2.0f;
+            return 0.0f;
+        }
+
+        // Unknown string param — try to parse as number, fallback to 0
+        return value.getFloatValue();
+    }
+
+    /**
+     * Convert a juce::var property value to float, handling string enums.
+     */
+    static float varToFloat(const juce::Identifier &paramName, const juce::var &value)
+    {
+        if (value.isString())
+        {
+            return stringParamToFloat(paramName.toString(), value.toString());
+        }
+        return static_cast<float>(value);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Constructor / Destructor
+    // ---------------------------------------------------------------------------
+
     PluginProcessor::PluginProcessor()
         : AudioProcessor(BusesProperties()
                              .withInput("Input", juce::AudioChannelSet::stereo(), true)
@@ -22,7 +138,7 @@ namespace rau
                             juce::String(value) + "}";
         webViewBridge.sendToJS(json); });
 
-        // Listen for messages from JS
+        // Listen for messages from JS (via the native function registered in createWebViewOptions)
         webViewBridge.onMessageFromJS([this](const juce::String &json)
                                       { handleJSMessage(json); });
     }
@@ -111,8 +227,13 @@ namespace rau
 
     void PluginProcessor::getStateInformation(juce::MemoryBlock &destData)
     {
-        // Request state from JS and serialize APVTS state
+        // Save both APVTS state and JS-side parameter state
         auto state = apvts.copyState();
+
+        // Attach the JS parameter state as a child element
+        auto jsState = paramStore.getStateAsJson();
+        state.setProperty("rau_js_state", juce::String(jsState), nullptr);
+
         std::unique_ptr<juce::XmlElement> xml(state.createXml());
         if (xml)
         {
@@ -125,7 +246,20 @@ namespace rau
         auto xml = getXmlFromBinary(data, sizeInBytes);
         if (xml && xml->hasTagName(apvts.state.getType()))
         {
-            apvts.replaceState(juce::ValueTree::fromXml(*xml));
+            auto newState = juce::ValueTree::fromXml(*xml);
+
+            // Restore JS-side state if present
+            auto jsStateStr = newState.getProperty("rau_js_state", "").toString();
+            if (jsStateStr.isNotEmpty())
+            {
+                // Send restoreState message to JS so it can rebuild its state
+                webViewBridge.sendToJS("{\"type\":\"restoreState\",\"state\":" +
+                                       jsStateStr.quoted() + "}");
+                // Also restore native-side parameter values
+                paramStore.restoreStateFromJson(jsStateStr.toStdString());
+            }
+
+            apvts.replaceState(newState);
         }
     }
 
@@ -164,7 +298,7 @@ namespace rau
                             for (auto &prop : params->getProperties())
                             {
                                 graphOp.params[prop.name.toString().toStdString()] =
-                                    static_cast<float>(prop.value);
+                                    varToFloat(prop.name, prop.value);
                             }
                         }
                     }
@@ -183,7 +317,7 @@ namespace rau
                             for (auto &prop : params->getProperties())
                             {
                                 graphOp.params[prop.name.toString().toStdString()] =
-                                    static_cast<float>(prop.value);
+                                    varToFloat(prop.name, prop.value);
                             }
                         }
                     }
@@ -247,10 +381,8 @@ namespace rau
         }
         else if (type == "setState")
         {
-            // JS responding with state for save
-            auto state = parsed.getProperty("state", "").toString().toStdString();
-            // Store this for getStateInformation
-            (void)state;
+            // JS responding with state for save — store for next getStateInformation
+            jsStateCache = parsed.getProperty("state", "").toString().toStdString();
         }
     }
 

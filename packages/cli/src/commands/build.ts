@@ -126,29 +126,42 @@ export const buildCommand = new Command("build")
   });
 
 async function loadPluginConfig(cwd: string): Promise<PluginConfig | null> {
-  // Use a dynamic import with tsx for TypeScript config files
-  const configPath = path.join(cwd, "plugin.config.ts");
-  if (!(await fs.pathExists(configPath))) return null;
+  // Look for config file in multiple formats
+  const candidates = [
+    path.join(cwd, "plugin.config.ts"),
+    path.join(cwd, "plugin.config.js"),
+    path.join(cwd, "plugin.config.mjs"),
+  ];
+
+  let configPath: string | null = null;
+  for (const p of candidates) {
+    if (await fs.pathExists(p)) {
+      configPath = p;
+      break;
+    }
+  }
+
+  if (!configPath) return null;
 
   try {
-    // Try to import as JS first (in case it's already been compiled)
-    const jsConfigPath = path.join(cwd, "plugin.config.js");
-    if (await fs.pathExists(jsConfigPath)) {
-      const mod = await import(jsConfigPath);
-      return mod.default ?? mod;
+    if (configPath.endsWith(".ts")) {
+      // Use jiti to load TypeScript config files natively
+      const { createJiti } = await import("jiti");
+      const jiti = createJiti(cwd);
+      const mod = (await jiti.import(configPath)) as Record<string, unknown>;
+      return (mod.default ?? mod) as PluginConfig;
+    } else {
+      // Plain JS — use native import
+      const mod = await import(configPath);
+      return (mod.default ?? mod) as PluginConfig;
     }
-
-    // Fall back to reading as JSON-like (strip TS syntax)
-    const raw = await fs.readFile(configPath, "utf-8");
-    // Simple extraction — in production, use tsx or ts-node
-    const match = raw.match(/export\s+default\s+({[\s\S]*})/);
-    if (match) {
-      // Use Function constructor to evaluate the object literal
-      const config = new Function(`return ${match[1]}`)();
-      return config as PluginConfig;
+  } catch (err) {
+    console.error(
+      chalk.yellow(`Warning: Could not load ${path.basename(configPath)}`),
+    );
+    if (err instanceof Error) {
+      console.error(chalk.dim(`  ${err.message}`));
     }
-  } catch {
-    // Fall through
   }
 
   return null;

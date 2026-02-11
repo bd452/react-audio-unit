@@ -68,6 +68,9 @@ namespace rau
 
         juce::AudioProcessorValueTreeState apvts;
 
+        // Cached JS state for save/recall
+        std::string jsStateCache;
+
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
     };
 

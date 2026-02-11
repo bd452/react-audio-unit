@@ -21,6 +21,8 @@ namespace rau
         juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
         // Pre-allocate generic parameter slots (param_000, param_001, ...)
+        // These start with a 0–1 range and get their actual range mapped
+        // dynamically when JS registers parameters.
         for (int i = 0; i < maxParams; ++i)
         {
             auto slotId = juce::String("param_") + juce::String(i).paddedLeft('0', 3);
@@ -49,23 +51,23 @@ namespace rau
         auto slotId = "param_" + juce::String(nextSlot).paddedLeft('0', 3).toStdString();
         idToSlot[id] = slotId;
         slotToId[slotId] = id;
+
+        // Store the range mapping for this parameter
+        rangeMap[slotId] = {min, max};
+
         nextSlot++;
 
-        // Update the slot's range and default
+        // Set the normalized default value
         if (auto *param = apvts->getParameter(slotId))
         {
-            // JUCE parameters store normalized values (0-1), we map accordingly
-            auto *rangedParam = dynamic_cast<juce::RangedAudioParameter *>(param);
-            if (rangedParam)
-            {
-                // Set the normalized default value
-                float normalizedDefault = (defaultValue - min) / (max - min);
-                rangedParam->setValueNotifyingHost(normalizedDefault);
-            }
+            float normalizedDefault = (max > min) ? (defaultValue - min) / (max - min) : 0.0f;
+            param->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, normalizedDefault));
         }
 
         // Listen for DAW automation changes on this slot
         apvts->addParameterListener(slotId, this);
+
+        (void)label; // Label used in future UI display
     }
 
     void ParameterStore::setParameterValue(const std::string &id, float value)
@@ -76,10 +78,19 @@ namespace rau
 
         if (auto *param = apvts->getParameter(it->second))
         {
-            // Convert to normalized 0-1 range
-            // Note: for simplicity, we assume the JS side sends the actual value
-            // and the bridge handles normalization
-            param->setValueNotifyingHost(param->convertTo0to1(value));
+            // Convert actual value to normalized 0–1 using stored range
+            auto rangeIt = rangeMap.find(it->second);
+            if (rangeIt != rangeMap.end())
+            {
+                float min = rangeIt->second.first;
+                float max = rangeIt->second.second;
+                float normalized = (max > min) ? (value - min) / (max - min) : 0.0f;
+                param->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, normalized));
+            }
+            else
+            {
+                param->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, value));
+            }
         }
     }
 
@@ -91,7 +102,16 @@ namespace rau
 
         if (auto *param = apvts->getParameter(it->second))
         {
-            return param->convertFrom0to1(param->getValue());
+            // Convert normalized 0–1 back to actual value using stored range
+            float normalized = param->getValue();
+            auto rangeIt = rangeMap.find(it->second);
+            if (rangeIt != rangeMap.end())
+            {
+                float min = rangeIt->second.first;
+                float max = rangeIt->second.second;
+                return min + normalized * (max - min);
+            }
+            return normalized;
         }
         return 0.0f;
     }
@@ -108,7 +128,16 @@ namespace rau
             auto it = slotToId.find(parameterID.toStdString());
             if (it != slotToId.end())
             {
-                changeCallback(it->second, newValue);
+                // Convert normalized value back to actual range
+                auto rangeIt = rangeMap.find(parameterID.toStdString());
+                float actualValue = newValue;
+                if (rangeIt != rangeMap.end())
+                {
+                    float min = rangeIt->second.first;
+                    float max = rangeIt->second.second;
+                    actualValue = min + newValue * (max - min);
+                }
+                changeCallback(it->second, actualValue);
             }
         }
     }
@@ -131,9 +160,21 @@ namespace rau
 
     void ParameterStore::restoreStateFromJson(const std::string &json)
     {
-        // Simple JSON parsing — in production, use a proper JSON library
-        // For now, we rely on the JS side to parse and send individual updates
-        (void)json;
+        // Parse simple JSON object { "key": value, ... }
+        // Use JUCE's JSON parser for robustness
+        auto parsed = juce::JSON::parse(juce::String(json));
+        if (parsed.isVoid())
+            return;
+
+        if (auto *obj = parsed.getDynamicObject())
+        {
+            for (auto &prop : obj->getProperties())
+            {
+                auto id = prop.name.toString().toStdString();
+                float value = static_cast<float>(prop.value);
+                setParameterValue(id, value);
+            }
+        }
     }
 
 } // namespace rau
