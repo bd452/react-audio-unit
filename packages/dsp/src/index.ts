@@ -29,6 +29,9 @@ export type { CompressorParams } from "./hooks/useCompressor.js";
 export { useReverb } from "./hooks/useReverb.js";
 export type { ReverbParams } from "./hooks/useReverb.js";
 
+export { useConvolver } from "./hooks/useConvolver.js";
+export type { ConvolverParams } from "./hooks/useConvolver.js";
+
 export { useDistortion } from "./hooks/useDistortion.js";
 export type {
   DistortionParams,
@@ -54,6 +57,13 @@ export type { FlangerParams } from "./hooks/useFlanger.js";
 export { usePhaser } from "./hooks/usePhaser.js";
 export type { PhaserParams } from "./hooks/usePhaser.js";
 
+// Channel routing
+export { useChannelSplit } from "./hooks/useChannelSplit.js";
+export { useChannelMerge } from "./hooks/useChannelMerge.js";
+// Aliases matching SUMMARY.md naming
+export { useChannelSplit as useSplit } from "./hooks/useChannelSplit.js";
+export { useChannelMerge as useMerge } from "./hooks/useChannelMerge.js";
+
 // Analysis
 export { useMeter } from "./hooks/useMeter.js";
 export type { MeterData, MeterType } from "./hooks/useMeter.js";
@@ -65,3 +75,20 @@ export type { SpectrumData } from "./hooks/useSpectrum.js";
 export { useMidi } from "./hooks/useMidi.js";
 export { useTransport } from "./hooks/useTransport.js";
 export { useHostInfo } from "./hooks/useHostInfo.js";
+
+// Polyphony
+export { usePolyphony, midiNoteToFrequency } from "./hooks/usePolyphony.js";
+export type {
+  Voice,
+  VoiceStealingStrategy,
+  PolyphonyOptions,
+  PolyphonyState,
+} from "./hooks/usePolyphony.js";
+
+// Presets
+export { usePresets } from "./hooks/usePresets.js";
+export type {
+  Preset,
+  PresetManager,
+  PresetManagerOptions,
+} from "./hooks/usePresets.js";

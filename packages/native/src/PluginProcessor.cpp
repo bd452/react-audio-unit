@@ -126,6 +126,7 @@ namespace rau
     PluginProcessor::PluginProcessor()
         : AudioProcessor(BusesProperties()
                              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+                             .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)
                              .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
           paramStore(*this),
           apvts(*this, nullptr, "Parameters", ParameterStore::createLayout())
@@ -166,6 +167,33 @@ namespace rau
 
         // Start analysis data timer (~30 fps)
         analysisTimer.startTimerHz(30);
+    }
+
+    bool PluginProcessor::isBusesLayoutSupported(const BusesLayout &layouts) const
+    {
+        // Main input/output must be stereo (or mono)
+        auto mainIn = layouts.getMainInputChannelSet();
+        auto mainOut = layouts.getMainOutputChannelSet();
+
+        if (mainOut != juce::AudioChannelSet::stereo() &&
+            mainOut != juce::AudioChannelSet::mono())
+            return false;
+
+        // Input can be disabled (instrument) or mono/stereo
+        if (!mainIn.isDisabled() &&
+            mainIn != juce::AudioChannelSet::stereo() &&
+            mainIn != juce::AudioChannelSet::mono())
+            return false;
+
+        // Sidechain (bus index 1) can be disabled, mono, or stereo
+        if (layouts.inputBuses.size() > 1)
+        {
+            auto sc = layouts.inputBuses[1];
+            if (!sc.isDisabled() && sc != juce::AudioChannelSet::stereo() && sc != juce::AudioChannelSet::mono())
+                return false;
+        }
+
+        return true;
     }
 
     void PluginProcessor::releaseResources()
@@ -260,7 +288,20 @@ namespace rau
             webViewBridge.sendToJS(midiJson);
         }
 
-        // Process the audio graph
+        // Pass sidechain bus buffer to the graph (bus index 1)
+        auto sidechainBus = getBus(true, 1);
+        if (sidechainBus && sidechainBus->isEnabled())
+        {
+            auto scBuffer = getBusBuffer(buffer, true, 1);
+            audioGraph.setHostInputBuffer(1, &scBuffer);
+        }
+        else
+        {
+            audioGraph.setHostInputBuffer(1, nullptr);
+        }
+
+        // Process the audio graph (main I/O via buffer)
+        auto mainBuffer = getBusBuffer(buffer, true, 0);
         audioGraph.processBlock(buffer, midi);
     }
 

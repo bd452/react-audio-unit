@@ -62,6 +62,7 @@ namespace rau
         std::vector<Connection> connections;
         std::string outputNodeId;
         std::string inputNodeId;
+        std::unordered_map<int, std::string> inputNodeIds; // bus index → node ID
     };
 
     /**
@@ -94,6 +95,9 @@ namespace rau
 
         // Called from message thread — direct parameter update (fast path)
         void setNodeParam(const std::string &nodeId, const std::string &param, float value);
+
+        // Set additional host input buffers (for sidechain, etc.)
+        void setHostInputBuffer(int busIndex, juce::AudioBuffer<float> *buffer);
 
         // Access a node by ID (for meter/spectrum readout). Returns nullptr if not found.
         AudioNodeBase *getNode(const std::string &nodeId) const;
@@ -142,6 +146,11 @@ namespace rau
         int currentNumChannels = 2;
 
         juce::AudioBuffer<float> *hostInputBuffer = nullptr;
+
+        // Multi-bus: additional input bus IDs and their host buffers
+        // Map from bus index (0 = main, 1 = sidechain, ...) to input node ID
+        std::unordered_map<int, std::string> inputNodeIds;
+        std::unordered_map<int, juce::AudioBuffer<float> *> hostInputBuffers;
     };
 
 } // namespace rau

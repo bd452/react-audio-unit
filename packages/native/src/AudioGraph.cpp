@@ -105,7 +105,13 @@ namespace rau
             }
             else if (op.nodeType == "input")
             {
-                inputNodeId = op.nodeId;
+                int busIndex = 0;
+                auto chIt = op.params.find("channel");
+                if (chIt != op.params.end())
+                    busIndex = static_cast<int>(chIt->second);
+                inputNodeIds[busIndex] = op.nodeId;
+                if (busIndex == 0)
+                    inputNodeId = op.nodeId;
             }
             break;
         }
@@ -121,6 +127,14 @@ namespace rau
             nodes.erase(op.nodeId);
             if (op.nodeId == inputNodeId)
                 inputNodeId.clear();
+            // Clean up multi-bus input entries
+            for (auto it = inputNodeIds.begin(); it != inputNodeIds.end();)
+            {
+                if (it->second == op.nodeId)
+                    it = inputNodeIds.erase(it);
+                else
+                    ++it;
+            }
             break;
         }
         case GraphOp::Connect:
@@ -153,6 +167,11 @@ namespace rau
 
         // After every topology change, rebuild and publish a new snapshot
         rebuildAndPublishSnapshot();
+    }
+
+    void AudioGraph::setHostInputBuffer(int busIndex, juce::AudioBuffer<float> *buffer)
+    {
+        hostInputBuffers[busIndex] = buffer;
     }
 
     void AudioGraph::setNodeParam(const std::string &nodeId, const std::string &param, float value)
@@ -198,6 +217,7 @@ namespace rau
         staging->connections = connections;
         staging->outputNodeId = outputNodeId;
         staging->inputNodeId = inputNodeId;
+        staging->inputNodeIds = inputNodeIds;
 
         buildProcessingOrder(nodes, staging->connections, staging->processingOrder);
 
@@ -311,16 +331,37 @@ namespace rau
         // Build a map of nodeId -> output BufferRef
         std::unordered_map<std::string, BufferRef> nodeOutputs;
 
-        // The input node's output is the host buffer itself
+        // The main input node's output is the host buffer itself
         if (!snapshot->inputNodeId.empty())
         {
             nodeOutputs[snapshot->inputNodeId] = {&buffer, -1};
         }
 
+        // Wire up additional input buses (sidechain, etc.)
+        for (auto &[busIdx, nodeId] : snapshot->inputNodeIds)
+        {
+            if (busIdx == 0)
+                continue; // already handled above
+            auto bufIt = hostInputBuffers.find(busIdx);
+            if (bufIt != hostInputBuffers.end() && bufIt->second)
+            {
+                nodeOutputs[nodeId] = {bufIt->second, -1};
+            }
+        }
+
         for (auto *node : snapshot->processingOrder)
         {
-            // Skip the input node — its output is the host buffer
-            if (node->nodeId == snapshot->inputNodeId)
+            // Skip all input nodes — their output is the host buffer
+            bool isInputNode = false;
+            for (auto &[busIdx, inId] : snapshot->inputNodeIds)
+            {
+                if (node->nodeId == inId)
+                {
+                    isInputNode = true;
+                    break;
+                }
+            }
+            if (isInputNode)
                 continue;
 
             // Acquire an output buffer for this node

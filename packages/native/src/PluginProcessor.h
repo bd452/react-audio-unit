@@ -32,6 +32,7 @@ namespace rau
         bool hasEditor() const override { return true; }
 
         const juce::String getName() const override { return JucePlugin_Name; }
+        bool isBusesLayoutSupported(const BusesLayout &layouts) const override;
 
         bool acceptsMidi() const override
         {

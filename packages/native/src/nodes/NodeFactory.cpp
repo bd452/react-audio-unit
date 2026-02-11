@@ -13,6 +13,8 @@
 #include "MeterNode.h"
 #include "SpectrumNode.h"
 #include "ConvolverNode.h"
+#include "SplitNode.h"
+#include "MergeNode.h"
 
 namespace rau
 {
@@ -38,6 +40,12 @@ namespace rau
             return std::make_unique<DistortionNode>();
         if (type == "pan")
             return std::make_unique<PanNode>();
+
+        // Routing
+        if (type == "split")
+            return std::make_unique<SplitNode>();
+        if (type == "merge")
+            return std::make_unique<MergeNode>();
 
         // Generators / Modulators
         if (type == "oscillator")
