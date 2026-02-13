@@ -14,127 +14,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build library packages
-        run: pnpm -r --filter './packages/*' build
-
-      - name: Typecheck all packages
-        run: pnpm typecheck
-
-      - name: Run tests
-        run: pnpm test
+      - run: pnpm install
+      - run: pnpm -r --filter './packages/*' build
+      - run: pnpm typecheck
+      - run: pnpm test
 
   # ---------------------------------------------------------------------------
-  # Native build — macOS
+  # Native plugin build (macOS / Windows / Linux)
   # ---------------------------------------------------------------------------
-  build-macos:
-    runs-on: macos-latest
+  build-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: plugin-macos
+            cmake-parallel: -j $(sysctl -n hw.ncpu)
+          - os: windows-latest
+            artifact: plugin-windows
+            cmake-parallel: ""
+          - os: ubuntu-latest
+            artifact: plugin-linux
+            cmake-parallel: -j $(nproc)
+
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build JS packages
-        run: pnpm -r --filter './packages/*' build
-
-      - name: Configure native build
-        working-directory: packages/native
-        run: |
-          mkdir -p build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build native plugin
-        working-directory: packages/native/build
-        run: cmake --build . --config Release -j $(sysctl -n hw.ncpu)
-
-      - name: Verify plugin binaries
-        run: |
-          ls -la packages/native/build/ReactAudioUnitPlugin_artefacts/Release/AU/ || true
-          ls -la packages/native/build/ReactAudioUnitPlugin_artefacts/Release/VST3/ || true
-          ls -la packages/native/build/ReactAudioUnitPlugin_artefacts/Release/Standalone/ || true
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: plugin-macos
-          path: |
-            packages/native/build/ReactAudioUnitPlugin_artefacts/Release/AU/
-            packages/native/build/ReactAudioUnitPlugin_artefacts/Release/VST3/
-            packages/native/build/ReactAudioUnitPlugin_artefacts/Release/Standalone/
-
-  # ---------------------------------------------------------------------------
-  # Native build — Windows
-  # ---------------------------------------------------------------------------
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build JS packages
-        run: pnpm -r --filter './packages/*' build
-
-      - name: Configure native build
-        working-directory: packages/native
-        run: |
-          mkdir build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build native plugin
-        working-directory: packages/native/build
-        run: cmake --build . --config Release
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: plugin-windows
-          path: packages/native/build/ReactAudioUnitPlugin_artefacts/Release/
-
-  # ---------------------------------------------------------------------------
-  # Native build — Linux
-  # ---------------------------------------------------------------------------
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install system dependencies
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -151,25 +70,19 @@ jobs:
             libxrender-dev \
             mesa-common-dev
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build JS packages
-        run: pnpm -r --filter './packages/*' build
+      - run: pnpm install
+      - run: pnpm -r --filter './packages/*' build
 
       - name: Configure native build
         working-directory: packages/native
-        run: |
-          mkdir -p build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build native plugin
-        working-directory: packages/native/build
-        run: cmake --build . --config Release -j $(nproc)
+        working-directory: packages/native
+        run: cmake --build build --config Release ${{ matrix.cmake-parallel }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-linux
+          name: ${{ matrix.artifact }}
           path: packages/native/build/ReactAudioUnitPlugin_artefacts/Release/
