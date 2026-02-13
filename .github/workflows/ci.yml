@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [master]
 
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ---------------------------------------------------------------------------
   # JavaScript / TypeScript checks
@@ -27,6 +32,10 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Native plugin build (macOS / Windows / Linux)
+  #
+  # The native build only needs CMake + a C++ compiler. It fetches JUCE via
+  # FetchContent and compiles the C++ plugin. No Node.js or pnpm required
+  # (the web UI is only embedded when RAU_WEB_UI_DIR is set).
   # ---------------------------------------------------------------------------
   build-native:
     strategy:
@@ -35,22 +44,14 @@ jobs:
         include:
           - os: macos-latest
             artifact: plugin-macos
-            cmake-parallel: -j $(sysctl -n hw.ncpu)
           - os: windows-latest
             artifact: plugin-windows
-            cmake-parallel: ""
           - os: ubuntu-latest
             artifact: plugin-linux
-            cmake-parallel: -j $(nproc)
 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -70,16 +71,30 @@ jobs:
             libxrender-dev \
             mesa-common-dev
 
-      - run: pnpm install
-      - run: pnpm -r --filter './packages/*' build
+      # Cache JUCE FetchContent download to avoid cloning on every build
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: packages/native/build/_deps
+          key: juce-8.0.4-${{ runner.os }}
+
+      # Cache compiled objects with ccache (Linux/macOS)
+      - name: Set up ccache
+        if: runner.os != 'Windows'
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: native-${{ runner.os }}
 
       - name: Configure native build
         working-directory: packages/native
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          ${{ runner.os != 'Windows' && '-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache' || '' }}
 
       - name: Build native plugin
         working-directory: packages/native
-        run: cmake --build build --config Release ${{ matrix.cmake-parallel }}
+        run: cmake --build build --config Release --parallel
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
