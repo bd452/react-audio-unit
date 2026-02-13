@@ -23,6 +23,38 @@ namespace rau
     };
 
     /**
+     * AtomicFloat — a move-safe wrapper around std::atomic<float>.
+     *
+     * std::atomic is neither copyable nor movable, which is a problem
+     * for containers like std::unordered_map that may need to rehash.
+     * This wrapper provides move semantics by loading/storing the value
+     * during moves. The move is NOT atomic with respect to concurrent
+     * readers, but moves only happen during node construction on the
+     * message thread (before the audio thread sees the node).
+     */
+    struct AtomicFloat
+    {
+        std::atomic<float> value;
+
+        AtomicFloat(float v = 0.0f) : value(v) {}
+        AtomicFloat(const AtomicFloat &other) : value(other.value.load(std::memory_order_relaxed)) {}
+        AtomicFloat(AtomicFloat &&other) noexcept : value(other.value.load(std::memory_order_relaxed)) {}
+        AtomicFloat &operator=(const AtomicFloat &other)
+        {
+            value.store(other.value.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            return *this;
+        }
+        AtomicFloat &operator=(AtomicFloat &&other) noexcept
+        {
+            value.store(other.value.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            return *this;
+        }
+
+        void store(float v, std::memory_order order = std::memory_order_relaxed) { value.store(v, order); }
+        float load(std::memory_order order = std::memory_order_relaxed) const { return value.load(order); }
+    };
+
+    /**
      * AudioNodeBase — base class for all DSP nodes.
      *
      * Subclasses implement prepare() and process(). Parameters are
@@ -119,7 +151,7 @@ namespace rau
         }
 
     private:
-        std::unordered_map<std::string, std::atomic<float>> params;
+        std::unordered_map<std::string, AtomicFloat> params;
     };
 
 } // namespace rau

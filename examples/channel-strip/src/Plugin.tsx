@@ -137,12 +137,12 @@ export default function Plugin() {
     resonance: 0.707,
   });
 
-  // Compressor
+  // Compressor (attack/release are already in ms — no conversion needed)
   const afterComp = useCompressor(afterHigh, {
     threshold,
     ratio,
-    attack: compAttack / 1000, // ms → seconds
-    release: compRelease / 1000,
+    attack: compAttack,
+    release: compRelease,
     makeupDb: makeup,
   });
 

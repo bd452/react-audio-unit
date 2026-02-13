@@ -48,6 +48,9 @@ namespace rau
         juce::dsp::Convolution convolution;
         juce::SmoothedValue<float> mixSmoothed;
         bool irLoaded = false;
+
+        // Pre-allocated wet buffer — avoids heap allocation on the audio thread
+        juce::AudioBuffer<float> wetBuffer;
     };
 
 } // namespace rau
