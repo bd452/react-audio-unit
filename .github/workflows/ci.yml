@@ -31,7 +31,7 @@ jobs:
       - run: pnpm test
 
   # ---------------------------------------------------------------------------
-  # Native plugin build (macOS / Windows / Linux)
+  # Native plugin build — macOS & Windows
   #
   # The native build only needs CMake + a C++ compiler. It fetches JUCE via
   # FetchContent and compiles the C++ plugin. No Node.js or pnpm required
@@ -46,15 +46,49 @@ jobs:
             artifact: plugin-macos
           - os: windows-latest
             artifact: plugin-windows
-          - os: ubuntu-latest
-            artifact: plugin-linux
 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: packages/native/build/_deps
+          key: juce-8.0.4-${{ runner.os }}
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: native-${{ runner.os }}
+
+      - name: Configure & build
+        working-directory: packages/native
+        shell: bash
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build --config Release --parallel
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: packages/native/build/ReactAudioUnitPlugin_artefacts/Release/
+
+  # ---------------------------------------------------------------------------
+  # Native plugin build — Linux
+  #
+  # Separate from the matrix because Linux requires system library
+  # installation that doesn't apply to macOS/Windows.
+  # ---------------------------------------------------------------------------
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -71,33 +105,27 @@ jobs:
             libxrender-dev \
             mesa-common-dev
 
-      # Cache JUCE FetchContent download to avoid cloning on every build
       - name: Cache JUCE
         uses: actions/cache@v4
         with:
           path: packages/native/build/_deps
-          key: juce-8.0.4-${{ runner.os }}
+          key: juce-8.0.4-Linux
 
-      # Cache compiled objects with ccache (Linux/macOS)
       - name: Set up ccache
-        if: runner.os != 'Windows'
         uses: hendrikmuhs/ccache-action@v1
         with:
-          key: native-${{ runner.os }}
+          key: native-Linux
 
-      - name: Configure native build
+      - name: Configure & build
         working-directory: packages/native
-        run: >
-          cmake -B build
-          -DCMAKE_BUILD_TYPE=Release
-          ${{ runner.os != 'Windows' && '-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache' || '' }}
-
-      - name: Build native plugin
-        working-directory: packages/native
-        run: cmake --build build --config Release --parallel
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build --config Release --parallel
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: plugin-linux
           path: packages/native/build/ReactAudioUnitPlugin_artefacts/Release/
