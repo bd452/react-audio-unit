@@ -1,10 +1,10 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
 import {
-  PARAM_ENV_ATTACK,
-  PARAM_ENV_DECAY,
-  PARAM_ENV_SUSTAIN,
-  PARAM_ENV_RELEASE,
+  PARAM_ATTACK,
+  PARAM_DECAY,
+  PARAM_SUSTAIN,
+  PARAM_RELEASE,
 } from "../param-keys.js";
 
 export interface EnvelopeParams {
@@ -47,10 +47,10 @@ export function useEnvelope(
   return useAudioNode(
     "envelope",
     {
-      [PARAM_ENV_ATTACK]: params.attack,
-      [PARAM_ENV_DECAY]: params.decay,
-      [PARAM_ENV_SUSTAIN]: params.sustain,
-      [PARAM_ENV_RELEASE]: params.release,
+      [PARAM_ATTACK]: params.attack,
+      [PARAM_DECAY]: params.decay,
+      [PARAM_SUSTAIN]: params.sustain,
+      [PARAM_RELEASE]: params.release,
     },
     inputs,
   );

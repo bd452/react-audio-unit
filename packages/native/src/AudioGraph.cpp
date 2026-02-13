@@ -1,4 +1,5 @@
 #include "AudioGraph.h"
+#include "nodes/MidiInputNode.h"
 #include <algorithm>
 #include <queue>
 #include <cassert>
@@ -206,7 +207,9 @@ namespace rau
 
     void AudioGraph::setNodeParam(const std::string &nodeId, const std::string &param, float value)
     {
-        // Direct atomic write — no queue needed, audio thread reads atomics
+        // Message-thread only — safe to access the authoritative `nodes` map.
+        // The write itself is atomic (AtomicFloat), so the audio thread
+        // picks up the new value lock-free on its next block.
         auto it = nodes.find(nodeId);
         if (it != nodes.end() && it->second)
         {
@@ -439,6 +442,12 @@ namespace rau
                     node->inputBuffers.push_back({});
                 }
                 node->inputBuffers[inlet] = ref;
+            }
+
+            // Provide the MIDI buffer to MidiInputNode instances
+            if (auto *midiNode = dynamic_cast<MidiInputNode *>(node))
+            {
+                midiNode->midiBuffer = &midi;
             }
 
             // Process

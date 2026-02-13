@@ -33,7 +33,10 @@ namespace rau
 
         // Deterministic PRNG state (xorshift32) — avoids calling rand()
         // which is not thread-safe and may lock on the audio thread.
-        uint32_t prngState = 0x12345678u;
+        // Each instance gets a unique seed from a monotonic counter so
+        // multiple LFOs with shape=random produce different sequences.
+        static inline std::atomic<uint32_t> seedCounter{0x12345678u};
+        uint32_t prngState = seedCounter.fetch_add(0x9E3779B9u, std::memory_order_relaxed);
         float nextRandom()
         {
             prngState ^= prngState << 13;

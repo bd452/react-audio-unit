@@ -101,7 +101,7 @@ namespace rau
         convolution.loadImpulseResponse(
             std::move(irBuffer),
             irSampleRate,
-            numChannels == 1 ? juce::dsp::Convolution::Stereo::yes : juce::dsp::Convolution::Stereo::yes,
+            numChannels == 1 ? juce::dsp::Convolution::Stereo::no : juce::dsp::Convolution::Stereo::yes,
             juce::dsp::Convolution::Trim::yes,
             juce::dsp::Convolution::Normalise::yes);
 

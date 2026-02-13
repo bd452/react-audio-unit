@@ -533,6 +533,11 @@ namespace rau
             auto curve = config.getProperty("curve", "linear").toString().toStdString();
             paramStore.registerParameter(id, min, max, def, label, curve);
         }
+        else if (type == "unregisterParameter")
+        {
+            auto id = parsed.getProperty("id", "").toString().toStdString();
+            paramStore.unregisterParameter(id);
+        }
         else if (type == "setParameterValue")
         {
             auto id = parsed.getProperty("id", "").toString().toStdString();

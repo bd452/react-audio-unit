@@ -6,6 +6,14 @@ import {
 } from "@react-audio-unit/core";
 
 /**
+ * Global monotonic counter for generating unique node IDs. This MUST NOT
+ * reset across render cycles — otherwise nodes that mount after the
+ * initial render (e.g. dynamically added polyphonic voices) can collide
+ * with IDs assigned during earlier renders.
+ */
+let globalNodeCounter = 0;
+
+/**
  * useAudioNode — the primitive that every DSP hook builds on.
  *
  * Registers a node of the given `type` in the virtual audio graph during
@@ -26,13 +34,11 @@ export function useAudioNode(
   const ctx = useAudioGraphContext();
 
   // Stable node ID — assigned once on first render, never changes.
-  // The call-order index ensures uniqueness within a component,
-  // and the type prefix aids debugging. The counter lives on the
-  // VirtualAudioGraph and resets when the graph is cleared after
-  // each render cycle.
+  // Uses a global monotonic counter so nodes that mount at different
+  // times (e.g. dynamically added polyphonic voices) never collide.
   const nodeIdRef = useRef<string | null>(null);
   if (nodeIdRef.current === null) {
-    nodeIdRef.current = `${type}_${ctx.nextCallIndex()}`;
+    nodeIdRef.current = `${type}_${globalNodeCounter++}`;
   }
   const nodeId = nodeIdRef.current;
 

@@ -140,6 +140,7 @@ target_sources(${RAU_TARGET_NAME} PRIVATE
     ${RAU_NATIVE_SRC_DIR}/nodes/ConvolverNode.cpp
     ${RAU_NATIVE_SRC_DIR}/nodes/SplitNode.cpp
     ${RAU_NATIVE_SRC_DIR}/nodes/MergeNode.cpp
+    ${RAU_NATIVE_SRC_DIR}/nodes/MidiInputNode.cpp
     ${RAU_NATIVE_SRC_DIR}/nodes/NodeFactory.cpp
 )
 
