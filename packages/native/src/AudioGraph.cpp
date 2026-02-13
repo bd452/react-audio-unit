@@ -74,19 +74,10 @@ namespace rau
     // Operation queue (message thread side)
     // ---------------------------------------------------------------------------
 
-    void AudioGraph::queueOp(GraphOp op)
+    // Apply a single topology op to the authoritative state (message thread).
+    // Does NOT rebuild the snapshot — the caller is responsible for that.
+    void AudioGraph::applyTopologyOp(const GraphOp &op)
     {
-        // UpdateParams go through the fast SPSC queue — audio thread applies
-        // them directly to the atomic params on existing nodes.
-        if (op.type == GraphOp::UpdateParams)
-        {
-            paramOpQueue.push(std::move(op));
-            return;
-        }
-
-        // Topology changes are applied immediately on the message thread
-        // to the authoritative state, then a new snapshot is built and
-        // published atomically for the audio thread.
         switch (op.type)
         {
         case GraphOp::AddNode:
@@ -164,9 +155,48 @@ namespace rau
         default:
             break;
         }
+    }
 
-        // After every topology change, rebuild and publish a new snapshot
+    void AudioGraph::queueOp(GraphOp op)
+    {
+        // UpdateParams go through the fast SPSC queue — audio thread applies
+        // them directly to the atomic params on existing nodes.
+        if (op.type == GraphOp::UpdateParams)
+        {
+            paramOpQueue.push(std::move(op));
+            return;
+        }
+
+        // Topology changes are applied immediately on the message thread
+        // to the authoritative state, then a new snapshot is built and
+        // published atomically for the audio thread.
+        applyTopologyOp(op);
         rebuildAndPublishSnapshot();
+    }
+
+    void AudioGraph::queueOps(std::vector<GraphOp> ops)
+    {
+        bool topologyChanged = false;
+
+        for (auto &op : ops)
+        {
+            if (op.type == GraphOp::UpdateParams)
+            {
+                paramOpQueue.push(std::move(op));
+            }
+            else
+            {
+                applyTopologyOp(op);
+                topologyChanged = true;
+            }
+        }
+
+        // Rebuild the snapshot only once after all ops are applied,
+        // so the audio thread never sees an intermediate state.
+        if (topologyChanged)
+        {
+            rebuildAndPublishSnapshot();
+        }
     }
 
     void AudioGraph::setHostInputBuffer(int busIndex, juce::AudioBuffer<float> *buffer)

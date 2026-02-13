@@ -57,10 +57,11 @@ namespace rau
                 break;
             case 4: // Random (sample & hold)
             {
-                // New random value at each cycle
+                // New random value at each cycle — uses deterministic PRNG
+                // instead of rand() for thread safety on the audio thread.
                 if (p < prevPhaseWrap)
                 {
-                    randomValue = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+                    randomValue = nextRandom();
                 }
                 value = randomValue;
                 break;

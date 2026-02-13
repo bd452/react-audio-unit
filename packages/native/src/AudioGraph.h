@@ -98,6 +98,9 @@ namespace rau
         // Called from message thread — queues an operation for the audio thread
         void queueOp(GraphOp op);
 
+        // Batch multiple topology ops, rebuilding the snapshot only once at the end
+        void queueOps(std::vector<GraphOp> ops);
+
         // Called from message thread — direct parameter update (fast path)
         void setNodeParam(const std::string &nodeId, const std::string &param, float value);
 
@@ -111,6 +114,7 @@ namespace rau
         std::vector<AudioNodeBase *> getNodesByType(const std::string &type) const;
 
     private:
+        void applyTopologyOp(const GraphOp &op);
         void applyPendingOps();
         void rebuildAndPublishSnapshot();
         static void buildProcessingOrder(

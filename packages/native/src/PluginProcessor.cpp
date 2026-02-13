@@ -431,10 +431,14 @@ namespace rau
 
         if (type == "graphOps")
         {
-            // Array of graph operations
+            // Array of graph operations — batched so the snapshot is rebuilt
+            // only once after all ops are applied (avoids intermediate states).
             auto ops = parsed.getProperty("ops", juce::var());
             if (auto *opsArray = ops.getArray())
             {
+                std::vector<GraphOp> batch;
+                batch.reserve(static_cast<size_t>(opsArray->size()));
+
                 for (auto &opVar : *opsArray)
                 {
                     GraphOp graphOp;
@@ -504,8 +508,10 @@ namespace rau
                         continue;
                     }
 
-                    audioGraph.queueOp(std::move(graphOp));
+                    batch.push_back(std::move(graphOp));
                 }
+
+                audioGraph.queueOps(std::move(batch));
             }
         }
         else if (type == "paramUpdate")

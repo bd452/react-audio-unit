@@ -30,6 +30,17 @@ namespace rau
         double lfoPhase = 0.0;
         float randomValue = 0.0f;
         float prevPhaseWrap = 0.0f;
+
+        // Deterministic PRNG state (xorshift32) — avoids calling rand()
+        // which is not thread-safe and may lock on the audio thread.
+        uint32_t prngState = 0x12345678u;
+        float nextRandom()
+        {
+            prngState ^= prngState << 13;
+            prngState ^= prngState >> 17;
+            prngState ^= prngState << 5;
+            return static_cast<float>(prngState) / static_cast<float>(0xFFFFFFFFu);
+        }
     };
 
 } // namespace rau
