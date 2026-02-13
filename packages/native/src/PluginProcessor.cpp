@@ -141,7 +141,7 @@ namespace rau
                             juce::String(value) + "}";
         webViewBridge.sendToJS(json); });
 
-        // Listen for messages from JS (via the native function registered in createWebViewOptions)
+        // Listen for messages from JS (via the event listener registered in createWebViewOptions)
         webViewBridge.onMessageFromJS([this](const juce::String &json)
                                       { handleJSMessage(json); });
     }

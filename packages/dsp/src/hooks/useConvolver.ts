@@ -1,5 +1,6 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import { PARAM_MIX, PARAM_GAIN, PARAM_BYPASS } from "../param-keys.js";
 
 export interface ConvolverParams {
   /** Dry/wet mix (0 = fully dry, 1 = fully wet). Default 0.5. */
@@ -26,9 +27,9 @@ export function useConvolver(
   return useAudioNode(
     "convolver",
     {
-      mix: params.mix ?? 0.5,
-      gain: params.gain ?? 1,
-      bypass: params.bypass ?? false,
+      [PARAM_MIX]: params.mix ?? 0.5,
+      [PARAM_GAIN]: params.gain ?? 1,
+      [PARAM_BYPASS]: params.bypass ?? false,
     },
     [input],
   );

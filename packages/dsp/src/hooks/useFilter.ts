@@ -1,5 +1,12 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import {
+  PARAM_FILTER_TYPE,
+  PARAM_CUTOFF,
+  PARAM_RESONANCE,
+  PARAM_GAIN_DB,
+  PARAM_BYPASS,
+} from "../param-keys.js";
 
 export type FilterType =
   | "lowpass"
@@ -32,11 +39,11 @@ export function useFilter(input: Signal, params: FilterParams): Signal {
   return useAudioNode(
     "filter",
     {
-      filterType: params.type,
-      cutoff: params.cutoff,
-      resonance: params.resonance ?? 0.707,
-      gainDb: params.gainDb ?? 0,
-      bypass: params.bypass ?? false,
+      [PARAM_FILTER_TYPE]: params.type,
+      [PARAM_CUTOFF]: params.cutoff,
+      [PARAM_RESONANCE]: params.resonance ?? 0.707,
+      [PARAM_GAIN_DB]: params.gainDb ?? 0,
+      [PARAM_BYPASS]: params.bypass ?? false,
     },
     [input],
   );

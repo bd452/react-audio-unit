@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { Signal } from "@react-audio-unit/core";
 import { bridge } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import { PARAM_METER_TYPE, PARAM_REFRESH_RATE } from "../param-keys.js";
 
 export type MeterType = "peak" | "rms" | "both";
 
@@ -42,7 +43,7 @@ export function useMeter(
     rate = typeOrOptions.refreshRate ?? refreshRate;
   }
 
-  const signal = useAudioNode("meter", { meterType: type, refreshRate: rate }, [
+  const signal = useAudioNode("meter", { [PARAM_METER_TYPE]: type, [PARAM_REFRESH_RATE]: rate }, [
     input,
   ]);
 
