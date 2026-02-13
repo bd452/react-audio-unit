@@ -300,9 +300,12 @@ namespace rau
             audioGraph.setHostInputBuffer(1, nullptr);
         }
 
-        // Process the audio graph (main I/O via buffer)
+        // Process the audio graph using only the main bus buffer.
+        // getBusBuffer returns a lightweight alias into `buffer` covering
+        // only the main stereo channels, so sidechain channels are not
+        // accidentally treated as main I/O.
         auto mainBuffer = getBusBuffer(buffer, true, 0);
-        audioGraph.processBlock(buffer, midi);
+        audioGraph.processBlock(mainBuffer, midi);
     }
 
     // ---------------------------------------------------------------------------

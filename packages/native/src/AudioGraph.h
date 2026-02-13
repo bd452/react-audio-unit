@@ -63,6 +63,11 @@ namespace rau
         std::string outputNodeId;
         std::string inputNodeId;
         std::unordered_map<int, std::string> inputNodeIds; // bus index → node ID
+
+        // Fast node lookup for the audio thread (raw pointers, no ownership).
+        // Populated during rebuildAndPublishSnapshot so the audio thread never
+        // touches the authoritative `nodes` map.
+        std::unordered_map<std::string, AudioNodeBase *> nodeMap;
     };
 
     /**

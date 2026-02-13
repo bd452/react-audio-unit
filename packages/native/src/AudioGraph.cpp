@@ -219,6 +219,15 @@ namespace rau
         staging->inputNodeId = inputNodeId;
         staging->inputNodeIds = inputNodeIds;
 
+        // Build the node lookup map so the audio thread can find nodes
+        // without touching the authoritative `nodes` map (thread safety).
+        staging->nodeMap.clear();
+        for (auto &[id, node] : nodes)
+        {
+            if (node)
+                staging->nodeMap[id] = node.get();
+        }
+
         buildProcessingOrder(nodes, staging->connections, staging->processingOrder);
 
         // Atomically publish — the audio thread will pick this up at the
@@ -290,14 +299,18 @@ namespace rau
 
     void AudioGraph::applyPendingOps()
     {
-        // Drain param-only ops from the SPSC queue
+        // Drain param-only ops from the SPSC queue.
+        // Use the snapshot's nodeMap for lookup instead of the authoritative
+        // `nodes` map, which is owned by the message thread.
+        auto *snapshot = activeSnapshot.load(std::memory_order_acquire);
+
         GraphOp op;
         while (paramOpQueue.pop(op))
         {
-            if (op.type == GraphOp::UpdateParams)
+            if (op.type == GraphOp::UpdateParams && snapshot)
             {
-                auto it = nodes.find(op.nodeId);
-                if (it != nodes.end() && it->second)
+                auto it = snapshot->nodeMap.find(op.nodeId);
+                if (it != snapshot->nodeMap.end() && it->second)
                 {
                     for (auto &[k, v] : op.params)
                     {

@@ -109,11 +109,13 @@ export default function Plugin() {
   // Signal chain
   const inputMeter = useMeter(input);
 
-  // HP filter
-  const afterHP =
-    hpOn > 0.5
-      ? useFilter(input, { type: "highpass", cutoff: hpFreq, resonance: 0.707 })
-      : input;
+  // HP filter — use bypass instead of conditional hook (Rules of Hooks)
+  const afterHP = useFilter(input, {
+    type: "highpass",
+    cutoff: hpFreq,
+    resonance: 0.707,
+    bypass: hpOn <= 0.5,
+  });
 
   // 3-band EQ
   const afterLow = useFilter(afterHP, {
