@@ -53,7 +53,7 @@ jobs:
         run: pnpm install
 
       - name: Build JS packages
-        run: pnpm build
+        run: pnpm -r --filter './packages/*' build
 
       - name: Configure native build
         working-directory: packages/native
@@ -100,7 +100,7 @@ jobs:
         run: pnpm install
 
       - name: Build JS packages
-        run: pnpm build
+        run: pnpm -r --filter './packages/*' build
 
       - name: Configure native build
         working-directory: packages/native
@@ -154,7 +154,7 @@ jobs:
         run: pnpm install
 
       - name: Build JS packages
-        run: pnpm build
+        run: pnpm -r --filter './packages/*' build
 
       - name: Configure native build
         working-directory: packages/native
