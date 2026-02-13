@@ -25,8 +25,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build packages
-        run: pnpm build
+      - name: Build library packages
+        run: pnpm -r --filter './packages/*' build
 
       - name: Typecheck all packages
         run: pnpm typecheck
