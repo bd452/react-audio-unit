@@ -8,9 +8,11 @@ export default {
   version: "1.0.0",
   category: "Effect",
   formats: ["AU", "VST3"],
-  channels: {
-    input: 2,
-    output: 2,
+  io: {
+    audio: {
+      inputs: [{ name: "Main", layouts: ["stereo", "mono"] }],
+      outputs: [{ name: "Main", layouts: ["stereo", "mono"] }],
+    },
   },
   ui: {
     width: 700,

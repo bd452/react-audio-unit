@@ -55,7 +55,8 @@ export interface PolyphonyState {
 export function usePolyphony(options: PolyphonyOptions = {}): PolyphonyState {
   const { maxVoices = 8, stealing = "oldest" } = options;
 
-  const midiEvents = useContext(MidiContext);
+  const midiBusEvents = useContext(MidiContext);
+  const midiEvents = midiBusEvents.get(0) ?? [];
   const nextVoiceId = useRef(0);
 
   const [voices, setVoices] = useState<Voice[]>([]);

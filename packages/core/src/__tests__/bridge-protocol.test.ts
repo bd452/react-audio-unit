@@ -68,6 +68,7 @@ describe("NativeBridge", () => {
 
     const msg: BridgeInMessage = {
       type: "midi",
+      busIndex: 0,
       events: [
         { type: "noteOn", channel: 1, note: 60, velocity: 0.8 },
         { type: "noteOff", channel: 1, note: 60, velocity: 0 },
