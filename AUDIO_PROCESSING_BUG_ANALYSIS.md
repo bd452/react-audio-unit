@@ -1,4 +1,4 @@
-# Audio Processing Bug Analysis
+# Audio Processing Bug Analysis (ALL ISSUES FIXED)
 
 After a deep review of the entire codebase (native C++ engine, JS/TS bridge + reconciler,
 DSP hooks, and all example plugins), the following issues were identified that could cause
@@ -317,3 +317,21 @@ parameter names. This would manifest as "adjustment doesn't work" for specific c
 
 **Issue #3 (thread safety)** is a latent correctness issue that could produce intermittent
 failures, but is less likely to be the consistent "doesn't work" described in the report.
+
+---
+
+## All Fixes Applied
+
+All 11 issues have been fixed:
+
+1. **StrictMode**: Added `isDirty()` flag to `VirtualAudioGraph`; PluginHost effect skips when no render happened.
+2. **Param names**: Created `packages/dsp/src/param-keys.ts` as single source of truth; fixed `makeupGain`→`makeupDb`, `outputLevel`→`outputGain`, removed phantom `unison`/`tempoSync`.
+3. **Thread safety**: `applyPendingOps` now uses `GraphSnapshot::nodeMap` instead of the shared `nodes` map.
+4. **Conditional hook**: Channel-strip HP filter uses `bypass` param instead of conditional `useFilter`.
+5. **Buffer routing**: `processBlock` passes `mainBuffer` (from `getBusBuffer`) instead of full multi-bus buffer.
+6. **Envelope units**: Synth example uses ms (10/200/300) instead of seconds (0.01/0.2/0.3).
+7. **Compressor units**: Channel-strip removed `/1000` division on attack/release.
+8. **ConvolverNode**: Wet buffer pre-allocated in `prepare()`.
+9. **AtomicFloat**: Introduced move-safe `AtomicFloat` wrapper for the parameter map.
+10. **Batch ops**: Added `AudioGraph::queueOps()` — snapshot rebuilds once per batch, not per op.
+11. **LFO PRNG**: Replaced `rand()` with deterministic xorshift32.
