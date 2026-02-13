@@ -15,6 +15,7 @@
 #include "ConvolverNode.h"
 #include "SplitNode.h"
 #include "MergeNode.h"
+#include "MidiInputNode.h"
 
 namespace rau
 {
@@ -55,6 +56,10 @@ namespace rau
         if (type == "envelope")
             return std::make_unique<EnvelopeNode>();
 
+        // MIDI
+        if (type == "midi_input")
+            return std::make_unique<MidiInputNode>();
+
         // Analysis (pass-through + data capture)
         if (type == "meter")
             return std::make_unique<MeterNode>();
@@ -62,7 +67,7 @@ namespace rau
             return std::make_unique<SpectrumNode>();
 
         // Input/output nodes are handled specially by AudioGraph
-        if (type == "input" || type == "midi_input")
+        if (type == "input")
         {
             return nullptr;
         }

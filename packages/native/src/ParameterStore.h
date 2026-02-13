@@ -40,6 +40,12 @@ namespace rau
                                float defaultValue, const std::string &label,
                                const std::string &curve = "linear");
 
+        /**
+         * Unregister a parameter, freeing its slot for reuse.
+         * Called when JS components unmount or during hot-reload.
+         */
+        void unregisterParameter(const std::string &id);
+
         void setParameterValue(const std::string &id, float value);
         float getParameterValue(const std::string &id) const;
 

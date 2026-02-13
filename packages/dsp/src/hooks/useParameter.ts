@@ -35,22 +35,34 @@ export function useParameter(
     };
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for parameter changes from the host/DAW
+  // Listen for parameter changes from the host/DAW.
+  // PluginHost also handles parameterChanged via the registry's entry.setValue
+  // wrapper (which updates entry.value + React state). This listener is a
+  // safety net that ensures the local React state is always up-to-date.
   useEffect(() => {
     return bridge.onMessage((msg) => {
       if (msg.type === "parameterChanged" && msg.id === id) {
         setValueInternal(msg.value);
+        // Keep registry in sync (may be redundant if PluginHost already
+        // dispatched through entry.setValue, but harmless to double-set).
+        const entry = registry?.getAll().get(id);
+        if (entry) entry.value = msg.value;
       }
     });
-  }, [id]);
+  }, [id, registry]);
 
-  // Setter that also notifies the native side
+  // Setter that also notifies the native side AND keeps the registry
+  // entry.value in sync (required for accurate state serialization).
   const setValue = useCallback(
     (newValue: number) => {
       setValueInternal(newValue);
+      // Update the registry's entry.value so requestState serializes
+      // the current value, not the stale default.
+      const entry = registry?.getAll().get(id);
+      if (entry) entry.value = newValue;
       bridge.setParameterValue(id, newValue);
     },
-    [id],
+    [id, registry],
   );
 
   return [value, setValue];

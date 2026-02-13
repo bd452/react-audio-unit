@@ -1,4 +1,5 @@
 #include "AudioGraph.h"
+#include "nodes/MidiInputNode.h"
 #include <algorithm>
 #include <queue>
 #include <cassert>
@@ -441,6 +442,12 @@ namespace rau
                     node->inputBuffers.push_back({});
                 }
                 node->inputBuffers[inlet] = ref;
+            }
+
+            // Provide the MIDI buffer to MidiInputNode instances
+            if (auto *midiNode = dynamic_cast<MidiInputNode *>(node))
+            {
+                midiNode->midiBuffer = &midi;
             }
 
             // Process

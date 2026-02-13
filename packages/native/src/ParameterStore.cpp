@@ -102,6 +102,37 @@ namespace rau
         (void)label; // Label used in future UI display
     }
 
+    void ParameterStore::unregisterParameter(const std::string &id)
+    {
+        auto it = idToSlot.find(id);
+        if (it == idToSlot.end())
+            return;
+
+        auto slotId = it->second;
+
+        // Stop listening for DAW automation on this slot
+        if (apvts)
+            apvts->removeParameterListener(slotId, this);
+
+        // Reset the slot to default (0) so stale automation doesn't linger
+        if (apvts)
+        {
+            if (auto *param = apvts->getParameter(slotId))
+                param->setValueNotifyingHost(0.0f);
+        }
+
+        // Clean up mappings
+        slotToId.erase(slotId);
+        rangeMap.erase(slotId);
+        idToSlot.erase(it);
+
+        // Note: we intentionally do NOT decrement nextSlot or recycle
+        // slot indices. JUCE AudioProcessorValueTreeState slots are
+        // pre-allocated and static for the plugin lifetime. Recycling
+        // would risk slot reuse collisions with DAW automation that
+        // still targets the old slot. The 128-slot ceiling is generous.
+    }
+
     void ParameterStore::setParameterValue(const std::string &id, float value)
     {
         auto it = idToSlot.find(id);
