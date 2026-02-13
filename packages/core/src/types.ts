@@ -63,6 +63,15 @@ export type GraphOp =
     }
   | { op: "setOutput"; nodeId: string };
 
+export interface HostAudioBusLayout {
+  /**
+   * Normalized layout token, e.g. "mono", "stereo", "5.1", "7.1.4",
+   * "disabled", or "discrete:12".
+   */
+  layout: string;
+  channels: number;
+}
+
 // ---------------------------------------------------------------------------
 // Bridge protocol — messages between JS and native C++
 // ---------------------------------------------------------------------------
@@ -94,7 +103,13 @@ export type BridgeInMessage =
   | { type: "requestState" }
   | { type: "restoreState"; state: string }
   | { type: "sampleRate"; value: number }
-  | { type: "blockSize"; value: number };
+  | { type: "blockSize"; value: number }
+  | {
+      type: "audioLayout";
+      mainInput: HostAudioBusLayout;
+      mainOutput: HostAudioBusLayout;
+      sidechainInput?: HostAudioBusLayout;
+    };
 
 // ---------------------------------------------------------------------------
 // Parameter types
@@ -127,7 +142,101 @@ export interface MidiEvent {
 // Plugin configuration (read from plugin.config.ts)
 // ---------------------------------------------------------------------------
 
-export interface PluginConfig {
+export type AudioChannelLayoutName =
+  | "disabled"
+  | "mono"
+  | "stereo"
+  | "lcr"
+  | "2.1"
+  | "quad"
+  | "4.0"
+  | "4.1"
+  | "5.0"
+  | "5.1"
+  | "6.0"
+  | "6.1"
+  | "7.0"
+  | "7.1"
+  | "7.1.2"
+  | "7.1.4"
+  | "9.1.6"
+  | "atmos"
+  | "atmos-7.1.2"
+  | "atmos-7.1.4"
+  | "atmos-9.1.6";
+
+export interface DiscreteAudioChannelLayout {
+  layout: "discrete";
+  channels: number;
+}
+
+/**
+ * Audio layout value used in plugin configuration.
+ *
+ * - String values use standard layout names (`"mono"`, `"stereo"`, `"5.1"`, etc.)
+ * - Number values are treated as discrete channel counts (`0`, `1`, `2`, ...)
+ * - `{ layout: "discrete", channels: n }` is an explicit discrete layout
+ */
+export type AudioChannelLayout =
+  | AudioChannelLayoutName
+  | number
+  | DiscreteAudioChannelLayout;
+
+/**
+ * One accepted main-bus arrangement (input/output pair).
+ *
+ * Plugins typically expose multiple alternatives like:
+ * - mono -> mono
+ * - stereo -> stereo
+ * - 5.1 -> 5.1
+ */
+export interface AudioMainBusArrangement {
+  input: AudioChannelLayout;
+  output: AudioChannelLayout;
+  name?: string;
+}
+
+export interface AudioSidechainConfig {
+  /**
+   * Supported sidechain channel layouts. Include `"disabled"` to allow hosts
+   * to disable the sidechain bus.
+   */
+  supported: AudioChannelLayout[];
+  /**
+   * If true, sidechain bus may be disabled by the host.
+   * Defaults to true when omitted.
+   */
+  optional?: boolean;
+}
+
+export interface PluginAudioIOConfig {
+  /**
+   * Main input/output alternatives accepted by the plugin.
+   */
+  main: AudioMainBusArrangement[];
+  /**
+   * Optional sidechain bus capabilities.
+   */
+  sidechain?: AudioSidechainConfig;
+}
+
+export interface PluginMidiIOConfig {
+  /**
+   * Whether the plugin accepts MIDI input from the host.
+   */
+  input?: boolean;
+  /**
+   * Whether the plugin can emit MIDI output to the host.
+   */
+  output?: boolean;
+}
+
+export interface PluginIOConfig {
+  audio?: PluginAudioIOConfig;
+  midi?: PluginMidiIOConfig;
+}
+
+interface PluginConfigBase {
   name: string;
   vendor: string;
   vendorId: string; // 4-char code
@@ -135,13 +244,34 @@ export interface PluginConfig {
   version: string;
   category: "Effect" | "Instrument" | "Analyzer";
   formats: ("AU" | "VST3" | "AAX")[];
-  channels: {
-    input: number;
-    output: number;
-  };
   ui: {
     width: number;
     height: number;
     resizable?: boolean;
   };
 }
+
+interface PluginConfigLegacyChannels {
+  /**
+   * @deprecated Use `io.audio.main` instead.
+   */
+  channels: {
+    input: number;
+    output: number;
+  };
+  io?: PluginIOConfig;
+}
+
+interface PluginConfigCapabilityIO {
+  io: PluginIOConfig;
+  /**
+   * @deprecated Kept for backward compatibility.
+   */
+  channels?: {
+    input: number;
+    output: number;
+  };
+}
+
+export type PluginConfig = PluginConfigBase &
+  (PluginConfigLegacyChannels | PluginConfigCapabilityIO);

@@ -269,6 +269,17 @@ Access host audio configuration.
 | ------------ | -------- | ---------------------- |
 | `sampleRate` | `number` | Sample rate in Hz      |
 | `blockSize`  | `number` | Buffer size in samples |
+| `audioLayout` | `object` | Active host bus layouts |
+
+`audioLayout` shape:
+
+```ts
+{
+  mainInput: { layout: string; channels: number };
+  mainOutput: { layout: string; channels: number };
+  sidechainInput?: { layout: string; channels: number };
+}
+```
 
 ---
 

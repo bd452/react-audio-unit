@@ -10,8 +10,14 @@ cmake_minimum_required(VERSION 3.22)
 #   RAU_PLUGIN_VERSION       - Semver string (e.g. "1.0.0")
 #   RAU_PLUGIN_IS_SYNTH      - ON/OFF (is this an instrument?)
 #   RAU_PLUGIN_NEEDS_MIDI    - ON/OFF
+#   RAU_PLUGIN_PRODUCES_MIDI - ON/OFF
 #   RAU_PLUGIN_CHANNELS_IN   - Number of input channels
 #   RAU_PLUGIN_CHANNELS_OUT  - Number of output channels
+#   RAU_MAIN_LAYOUTS         - Main bus alternatives, e.g. "mono>mono|stereo>stereo|5.1>5.1"
+#   RAU_MAIN_INPUT_DEFAULT   - Default main input layout token
+#   RAU_MAIN_OUTPUT_DEFAULT  - Default main output layout token
+#   RAU_SIDECHAIN_LAYOUTS    - Sidechain alternatives, e.g. "disabled|mono|stereo"
+#   RAU_SIDECHAIN_OPTIONAL   - ON/OFF
 #   RAU_UI_WIDTH             - Editor width in pixels
 #   RAU_UI_HEIGHT            - Editor height in pixels
 #   RAU_WEB_UI_DIR           - Path to the built web UI (index.html + JS/CSS)
@@ -40,11 +46,29 @@ endif()
 if(NOT DEFINED RAU_PLUGIN_NEEDS_MIDI)
     set(RAU_PLUGIN_NEEDS_MIDI OFF CACHE BOOL "")
 endif()
+if(NOT DEFINED RAU_PLUGIN_PRODUCES_MIDI)
+    set(RAU_PLUGIN_PRODUCES_MIDI OFF CACHE BOOL "")
+endif()
 if(NOT DEFINED RAU_PLUGIN_CHANNELS_IN)
     set(RAU_PLUGIN_CHANNELS_IN 2 CACHE STRING "")
 endif()
 if(NOT DEFINED RAU_PLUGIN_CHANNELS_OUT)
     set(RAU_PLUGIN_CHANNELS_OUT 2 CACHE STRING "")
+endif()
+if(NOT DEFINED RAU_MAIN_LAYOUTS)
+    set(RAU_MAIN_LAYOUTS "stereo>stereo" CACHE STRING "")
+endif()
+if(NOT DEFINED RAU_MAIN_INPUT_DEFAULT)
+    set(RAU_MAIN_INPUT_DEFAULT "stereo" CACHE STRING "")
+endif()
+if(NOT DEFINED RAU_MAIN_OUTPUT_DEFAULT)
+    set(RAU_MAIN_OUTPUT_DEFAULT "stereo" CACHE STRING "")
+endif()
+if(NOT DEFINED RAU_SIDECHAIN_LAYOUTS)
+    set(RAU_SIDECHAIN_LAYOUTS "disabled|mono|stereo" CACHE STRING "")
+endif()
+if(NOT DEFINED RAU_SIDECHAIN_OPTIONAL)
+    set(RAU_SIDECHAIN_OPTIONAL ON CACHE BOOL "")
 endif()
 if(NOT DEFINED RAU_UI_WIDTH)
     set(RAU_UI_WIDTH 600 CACHE STRING "")
@@ -111,6 +135,7 @@ juce_add_plugin(${RAU_TARGET_NAME}
     FORMATS                     ${RAU_FORMATS}
     IS_SYNTH                    ${RAU_PLUGIN_IS_SYNTH}
     NEEDS_MIDI_INPUT            ${RAU_PLUGIN_NEEDS_MIDI}
+    PRODUCES_MIDI_OUTPUT        ${RAU_PLUGIN_PRODUCES_MIDI}
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD     TRUE
 )
@@ -160,6 +185,11 @@ target_compile_definitions(${RAU_TARGET_NAME} PUBLIC
     RAU_UI_HEIGHT=${RAU_UI_HEIGHT}
     RAU_CHANNELS_IN=${RAU_PLUGIN_CHANNELS_IN}
     RAU_CHANNELS_OUT=${RAU_PLUGIN_CHANNELS_OUT}
+    RAU_MAIN_LAYOUTS=\"${RAU_MAIN_LAYOUTS}\"
+    RAU_MAIN_INPUT_DEFAULT=\"${RAU_MAIN_INPUT_DEFAULT}\"
+    RAU_MAIN_OUTPUT_DEFAULT=\"${RAU_MAIN_OUTPUT_DEFAULT}\"
+    RAU_SIDECHAIN_LAYOUTS=\"${RAU_SIDECHAIN_LAYOUTS}\"
+    RAU_SIDECHAIN_OPTIONAL=\"${RAU_SIDECHAIN_OPTIONAL}\"
 )
 
 # ---------------------------------------------------------------------------

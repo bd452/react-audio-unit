@@ -4,6 +4,52 @@ import { execa } from "execa";
 import chalk from "chalk";
 import fs from "fs-extra";
 
+type AudioChannelLayoutName =
+  | "disabled"
+  | "mono"
+  | "stereo"
+  | "lcr"
+  | "2.1"
+  | "quad"
+  | "4.0"
+  | "4.1"
+  | "5.0"
+  | "5.1"
+  | "6.0"
+  | "6.1"
+  | "7.0"
+  | "7.1"
+  | "7.1.2"
+  | "7.1.4"
+  | "9.1.6"
+  | "atmos"
+  | "atmos-7.1.2"
+  | "atmos-7.1.4"
+  | "atmos-9.1.6";
+
+type AudioChannelLayout =
+  | AudioChannelLayoutName
+  | number
+  | { layout: "discrete"; channels: number };
+
+interface PluginIOConfig {
+  audio?: {
+    main: Array<{
+      input: AudioChannelLayout;
+      output: AudioChannelLayout;
+      name?: string;
+    }>;
+    sidechain?: {
+      supported: AudioChannelLayout[];
+      optional?: boolean;
+    };
+  };
+  midi?: {
+    input?: boolean;
+    output?: boolean;
+  };
+}
+
 interface PluginConfig {
   name: string;
   vendor: string;
@@ -12,8 +58,29 @@ interface PluginConfig {
   version: string;
   category: string;
   formats: string[];
-  channels: { input: number; output: number };
+  channels?: { input: number; output: number };
+  io?: PluginIOConfig;
   ui: { width: number; height: number; resizable?: boolean };
+}
+
+interface ResolvedAudioLayout {
+  token: string;
+  channels: number;
+}
+
+interface ResolvedMainArrangement {
+  input: ResolvedAudioLayout;
+  output: ResolvedAudioLayout;
+}
+
+interface ResolvedIOCapabilities {
+  mainArrangements: ResolvedMainArrangement[];
+  defaultMainInput: ResolvedAudioLayout;
+  defaultMainOutput: ResolvedAudioLayout;
+  sidechainLayouts: ResolvedAudioLayout[];
+  sidechainOptional: boolean;
+  midiInput: boolean;
+  midiOutput: boolean;
 }
 
 export const buildCommand = new Command("build")
@@ -49,6 +116,14 @@ export const buildCommand = new Command("build")
     }
     console.log(chalk.dim(`  Plugin: ${config.name} v${config.version}`));
     console.log(chalk.dim(`  Vendor: ${config.vendor}`));
+    let ioCapabilities: ResolvedIOCapabilities;
+    try {
+      ioCapabilities = resolveIOCapabilities(config);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`Invalid I/O configuration: ${message}`));
+      process.exit(1);
+    }
 
     // Determine target platform
     const hostPlatform = process.platform; // 'darwin', 'win32', 'linux'
@@ -98,6 +173,16 @@ export const buildCommand = new Command("build")
         `  Platform: ${targetPlatform === "darwin" ? "macOS" : targetPlatform === "win32" ? "Windows" : "Linux"}`,
       ),
     );
+    console.log(
+      chalk.dim(
+        `  Audio layouts: ${formatMainArrangements(ioCapabilities.mainArrangements)}`,
+      ),
+    );
+    console.log(
+      chalk.dim(
+        `  MIDI I/O: in=${ioCapabilities.midiInput ? "yes" : "no"}, out=${ioCapabilities.midiOutput ? "yes" : "no"}`,
+      ),
+    );
     console.log();
 
     // 2. Build the React UI with Vite
@@ -140,9 +225,15 @@ export const buildCommand = new Command("build")
       `-DRAU_VENDOR_CODE=${config.vendorId}`,
       `-DRAU_PLUGIN_VERSION=${config.version}`,
       `-DRAU_PLUGIN_IS_SYNTH=${isSynth ? "ON" : "OFF"}`,
-      `-DRAU_PLUGIN_NEEDS_MIDI=${isSynth ? "ON" : "OFF"}`,
-      `-DRAU_PLUGIN_CHANNELS_IN=${config.channels.input}`,
-      `-DRAU_PLUGIN_CHANNELS_OUT=${config.channels.output}`,
+      `-DRAU_PLUGIN_NEEDS_MIDI=${ioCapabilities.midiInput ? "ON" : "OFF"}`,
+      `-DRAU_PLUGIN_PRODUCES_MIDI=${ioCapabilities.midiOutput ? "ON" : "OFF"}`,
+      `-DRAU_PLUGIN_CHANNELS_IN=${ioCapabilities.defaultMainInput.channels}`,
+      `-DRAU_PLUGIN_CHANNELS_OUT=${ioCapabilities.defaultMainOutput.channels}`,
+      `-DRAU_MAIN_LAYOUTS=${serializeMainArrangements(ioCapabilities.mainArrangements)}`,
+      `-DRAU_MAIN_INPUT_DEFAULT=${ioCapabilities.defaultMainInput.token}`,
+      `-DRAU_MAIN_OUTPUT_DEFAULT=${ioCapabilities.defaultMainOutput.token}`,
+      `-DRAU_SIDECHAIN_LAYOUTS=${serializeLayoutList(ioCapabilities.sidechainLayouts)}`,
+      `-DRAU_SIDECHAIN_OPTIONAL=${ioCapabilities.sidechainOptional ? "ON" : "OFF"}`,
       `-DRAU_UI_WIDTH=${config.ui.width}`,
       `-DRAU_UI_HEIGHT=${config.ui.height}`,
       `-DRAU_WEB_UI_DIR=${uiDistDir}`,
@@ -199,6 +290,218 @@ export const buildCommand = new Command("build")
     }
   },
   );
+
+const AUDIO_LAYOUT_CHANNELS: Record<string, number> = {
+  disabled: 0,
+  mono: 1,
+  stereo: 2,
+  lcr: 3,
+  "2.1": 3,
+  quad: 4,
+  "4.0": 4,
+  "4.1": 5,
+  "5.0": 5,
+  "5.1": 6,
+  "6.0": 6,
+  "6.1": 7,
+  "7.0": 7,
+  "7.1": 8,
+  "7.1.2": 10,
+  "7.1.4": 12,
+  "9.1.6": 16,
+};
+
+const AUDIO_LAYOUT_ALIASES: Record<string, string> = {
+  "1.0": "mono",
+  "2.0": "stereo",
+  "3.0": "lcr",
+  atmos: "7.1.2",
+  "atmos-7.1.2": "7.1.2",
+  "atmos-7.1.4": "7.1.4",
+  "atmos-9.1.6": "9.1.6",
+};
+
+function resolveIOCapabilities(config: PluginConfig): ResolvedIOCapabilities {
+  const mainArrangements = resolveMainArrangements(config);
+  if (mainArrangements.length === 0) {
+    throw new Error("at least one main audio arrangement is required");
+  }
+
+  const sidechainLayouts = dedupeLayouts(
+    config.io?.audio?.sidechain?.supported?.length
+      ? config.io.audio.sidechain.supported.map((layout, index) =>
+          normalizeAudioLayout(layout, {
+            allowDisabled: true,
+            location: `io.audio.sidechain.supported[${index}]`,
+          }),
+        )
+      : [
+          normalizeAudioLayout("disabled", {
+            allowDisabled: true,
+            location: "sidechain default",
+          }),
+          normalizeAudioLayout("mono", {
+            allowDisabled: false,
+            location: "sidechain default",
+          }),
+          normalizeAudioLayout("stereo", {
+            allowDisabled: false,
+            location: "sidechain default",
+          }),
+        ],
+  );
+
+  const sidechainOptional = config.io?.audio?.sidechain?.optional ?? true;
+  const midiInput = config.io?.midi?.input ?? config.category === "Instrument";
+  const midiOutput = config.io?.midi?.output ?? false;
+
+  return {
+    mainArrangements,
+    defaultMainInput: mainArrangements[0].input,
+    defaultMainOutput: mainArrangements[0].output,
+    sidechainLayouts,
+    sidechainOptional,
+    midiInput,
+    midiOutput,
+  };
+}
+
+function resolveMainArrangements(
+  config: PluginConfig,
+): ResolvedMainArrangement[] {
+  const configuredMain = config.io?.audio?.main;
+  if (configuredMain && configuredMain.length > 0) {
+    return configuredMain.map((arrangement, index) => ({
+      input: normalizeAudioLayout(arrangement.input, {
+        allowDisabled: true,
+        location: `io.audio.main[${index}].input`,
+      }),
+      output: normalizeAudioLayout(arrangement.output, {
+        allowDisabled: false,
+        location: `io.audio.main[${index}].output`,
+      }),
+    }));
+  }
+
+  const legacyInput =
+    config.channels?.input ?? (config.category === "Instrument" ? 0 : 2);
+  const legacyOutput = config.channels?.output ?? 2;
+
+  return [
+    {
+      input: normalizeAudioLayout(legacyInput, {
+        allowDisabled: true,
+        location: "channels.input",
+      }),
+      output: normalizeAudioLayout(legacyOutput, {
+        allowDisabled: false,
+        location: "channels.output",
+      }),
+    },
+  ];
+}
+
+function normalizeAudioLayout(
+  layout: AudioChannelLayout,
+  options: { allowDisabled: boolean; location: string },
+): ResolvedAudioLayout {
+  let token: string;
+  let channels: number;
+
+  if (typeof layout === "number") {
+    if (!Number.isInteger(layout) || layout < 0) {
+      throw new Error(`${options.location}: numeric layout must be >= 0`);
+    }
+    channels = layout;
+    token = tokenFromChannelCount(layout);
+  } else if (typeof layout === "string") {
+    const raw = layout.trim().toLowerCase();
+    const canonical = AUDIO_LAYOUT_ALIASES[raw] ?? raw;
+
+    if (canonical.startsWith("discrete:")) {
+      const count = Number.parseInt(canonical.slice("discrete:".length), 10);
+      if (!Number.isInteger(count) || count < 1) {
+        throw new Error(
+          `${options.location}: discrete layout must be discrete:<positive-integer>`,
+        );
+      }
+      channels = count;
+      token = `discrete:${count}`;
+    } else {
+      const mapped = AUDIO_LAYOUT_CHANNELS[canonical];
+      if (mapped === undefined) {
+        throw new Error(
+          `${options.location}: unsupported layout "${layout}". Supported examples: mono, stereo, 5.1, 7.1.4, atmos, discrete:12`,
+        );
+      }
+      channels = mapped;
+      token = canonical;
+    }
+  } else {
+    if (layout.layout !== "discrete") {
+      throw new Error(
+        `${options.location}: object layout must use { layout: "discrete", channels: number }`,
+      );
+    }
+    if (!Number.isInteger(layout.channels) || layout.channels < 1) {
+      throw new Error(
+        `${options.location}: discrete layout object requires channels >= 1`,
+      );
+    }
+    channels = layout.channels;
+    token = `discrete:${channels}`;
+  }
+
+  if (channels === 0 && !options.allowDisabled) {
+    throw new Error(`${options.location}: "disabled" is not allowed here`);
+  }
+
+  return { token, channels };
+}
+
+function tokenFromChannelCount(channels: number): string {
+  if (channels === 0) return "disabled";
+  if (channels === 1) return "mono";
+  if (channels === 2) return "stereo";
+  return `discrete:${channels}`;
+}
+
+function dedupeLayouts(layouts: ResolvedAudioLayout[]): ResolvedAudioLayout[] {
+  const seen = new Set<string>();
+  const out: ResolvedAudioLayout[] = [];
+  for (const layout of layouts) {
+    if (seen.has(layout.token)) continue;
+    seen.add(layout.token);
+    out.push(layout);
+  }
+  return out;
+}
+
+function serializeMainArrangements(
+  arrangements: ResolvedMainArrangement[],
+): string {
+  const seen = new Set<string>();
+  const pairs: string[] = [];
+  for (const arrangement of arrangements) {
+    const serialized = `${arrangement.input.token}>${arrangement.output.token}`;
+    if (seen.has(serialized)) continue;
+    seen.add(serialized);
+    pairs.push(serialized);
+  }
+  return pairs.join("|");
+}
+
+function serializeLayoutList(layouts: ResolvedAudioLayout[]): string {
+  return dedupeLayouts(layouts)
+    .map((layout) => layout.token)
+    .join("|");
+}
+
+function formatMainArrangements(arrangements: ResolvedMainArrangement[]): string {
+  return arrangements
+    .map((arrangement) => `${arrangement.input.token} -> ${arrangement.output.token}`)
+    .join(" | ");
+}
 
 async function loadPluginConfig(cwd: string): Promise<PluginConfig | null> {
   // Look for config file in multiple formats

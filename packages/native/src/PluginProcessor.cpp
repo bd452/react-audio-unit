@@ -3,9 +3,308 @@
 #include "nodes/MeterNode.h"
 #include "nodes/SpectrumNode.h"
 #include <juce_core/juce_core.h>
+#include <vector>
 
 namespace rau
 {
+
+    // ---------------------------------------------------------------------------
+    // Compile-time config defaults
+    // ---------------------------------------------------------------------------
+
+#ifndef RAU_MAIN_LAYOUTS
+#define RAU_MAIN_LAYOUTS "stereo>stereo"
+#endif
+
+#ifndef RAU_MAIN_INPUT_DEFAULT
+#define RAU_MAIN_INPUT_DEFAULT "stereo"
+#endif
+
+#ifndef RAU_MAIN_OUTPUT_DEFAULT
+#define RAU_MAIN_OUTPUT_DEFAULT "stereo"
+#endif
+
+#ifndef RAU_SIDECHAIN_LAYOUTS
+#define RAU_SIDECHAIN_LAYOUTS "disabled|mono|stereo"
+#endif
+
+#ifndef RAU_SIDECHAIN_OPTIONAL
+#define RAU_SIDECHAIN_OPTIONAL "ON"
+#endif
+
+    struct LayoutSpec
+    {
+        juce::String token;
+        int channels = 0;
+    };
+
+    struct MainLayoutPair
+    {
+        LayoutSpec input;
+        LayoutSpec output;
+    };
+
+    static juce::String canonicaliseLayoutToken(juce::String token)
+    {
+        token = token.trim().toLowerCase();
+        if (token == "1.0")
+            return "mono";
+        if (token == "2.0")
+            return "stereo";
+        if (token == "3.0")
+            return "lcr";
+        if (token == "atmos")
+            return "7.1.2";
+        if (token == "atmos-7.1.2")
+            return "7.1.2";
+        if (token == "atmos-7.1.4")
+            return "7.1.4";
+        if (token == "atmos-9.1.6")
+            return "9.1.6";
+        return token;
+    }
+
+    static int channelCountForLayoutToken(const juce::String &token)
+    {
+        if (token == "disabled")
+            return 0;
+        if (token == "mono")
+            return 1;
+        if (token == "stereo")
+            return 2;
+        if (token == "lcr")
+            return 3;
+        if (token == "2.1")
+            return 3;
+        if (token == "quad" || token == "4.0")
+            return 4;
+        if (token == "4.1")
+            return 5;
+        if (token == "5.0")
+            return 5;
+        if (token == "5.1")
+            return 6;
+        if (token == "6.0")
+            return 6;
+        if (token == "6.1")
+            return 7;
+        if (token == "7.0")
+            return 7;
+        if (token == "7.1")
+            return 8;
+        if (token == "7.1.2")
+            return 10;
+        if (token == "7.1.4")
+            return 12;
+        if (token == "9.1.6")
+            return 16;
+        return -1;
+    }
+
+    static LayoutSpec parseLayoutSpec(const juce::String &rawLayout)
+    {
+        const auto token = canonicaliseLayoutToken(rawLayout);
+        if (token.startsWith("discrete:"))
+        {
+            const int count = token.fromFirstOccurrenceOf("discrete:", false, false).getIntValue();
+            if (count > 0)
+                return {juce::String("discrete:") + juce::String(count), count};
+            return {"stereo", 2};
+        }
+
+        const int channels = channelCountForLayoutToken(token);
+        if (channels >= 0)
+            return {token, channels};
+
+        return {"stereo", 2};
+    }
+
+    static juce::AudioChannelSet toChannelSet(const LayoutSpec &layout)
+    {
+        if (layout.channels <= 0 || layout.token == "disabled")
+            return juce::AudioChannelSet::disabled();
+
+        if (layout.token == "mono")
+            return juce::AudioChannelSet::mono();
+        if (layout.token == "stereo")
+            return juce::AudioChannelSet::stereo();
+        if (layout.token == "lcr")
+            return juce::AudioChannelSet::createLCR();
+        if (layout.token == "quad" || layout.token == "4.0")
+            return juce::AudioChannelSet::quadraphonic();
+        if (layout.token == "5.0")
+            return juce::AudioChannelSet::create5point0();
+        if (layout.token == "5.1")
+            return juce::AudioChannelSet::create5point1();
+        if (layout.token == "6.0")
+            return juce::AudioChannelSet::create6point0();
+        if (layout.token == "6.1")
+            return juce::AudioChannelSet::create6point1();
+        if (layout.token == "7.0")
+            return juce::AudioChannelSet::create7point0();
+        if (layout.token == "7.1")
+            return juce::AudioChannelSet::create7point1();
+
+        // Layouts without JUCE canonical helpers (e.g. 2.1, 4.1, Atmos variants)
+        // are treated as discrete channels.
+        return juce::AudioChannelSet::discreteChannels(layout.channels);
+    }
+
+    static juce::StringArray splitPipeList(const juce::String &list)
+    {
+        juce::StringArray out;
+        out.addTokens(list, "|", "");
+        out.trim();
+        out.removeEmptyStrings();
+        return out;
+    }
+
+    static std::vector<MainLayoutPair> parseMainLayoutPairs(const juce::String &layoutPairs)
+    {
+        std::vector<MainLayoutPair> pairs;
+        for (const auto &entry : splitPipeList(layoutPairs))
+        {
+            const int sep = entry.indexOfChar('>');
+            if (sep < 0)
+                continue;
+
+            const auto inLayout = entry.substring(0, sep).trim();
+            const auto outLayout = entry.substring(sep + 1).trim();
+            if (inLayout.isEmpty() || outLayout.isEmpty())
+                continue;
+
+            pairs.push_back({parseLayoutSpec(inLayout), parseLayoutSpec(outLayout)});
+        }
+
+        if (pairs.empty())
+        {
+            pairs.push_back({parseLayoutSpec("stereo"), parseLayoutSpec("stereo")});
+        }
+
+        return pairs;
+    }
+
+    static std::vector<LayoutSpec> parseLayoutList(const juce::String &layoutList)
+    {
+        std::vector<LayoutSpec> layouts;
+        for (const auto &entry : splitPipeList(layoutList))
+        {
+            layouts.push_back(parseLayoutSpec(entry));
+        }
+
+        if (layouts.empty())
+            layouts.push_back(parseLayoutSpec("disabled"));
+        return layouts;
+    }
+
+    static bool parseBoolString(const juce::String &raw)
+    {
+        const auto value = raw.trim().toLowerCase();
+        return value == "1" || value == "true" || value == "yes" || value == "on";
+    }
+
+    static const std::vector<MainLayoutPair> &mainLayoutPairs()
+    {
+        static const auto pairs = parseMainLayoutPairs(RAU_MAIN_LAYOUTS);
+        return pairs;
+    }
+
+    static const std::vector<LayoutSpec> &sidechainLayouts()
+    {
+        static const auto layouts = parseLayoutList(RAU_SIDECHAIN_LAYOUTS);
+        return layouts;
+    }
+
+    static const LayoutSpec &defaultMainInputLayout()
+    {
+        static const auto layout = parseLayoutSpec(RAU_MAIN_INPUT_DEFAULT);
+        return layout;
+    }
+
+    static const LayoutSpec &defaultMainOutputLayout()
+    {
+        static const auto layout = parseLayoutSpec(RAU_MAIN_OUTPUT_DEFAULT);
+        return layout;
+    }
+
+    static const LayoutSpec &defaultSidechainLayout()
+    {
+        static const auto layout = []() -> LayoutSpec
+        {
+            for (const auto &spec : sidechainLayouts())
+            {
+                if (spec.channels > 0)
+                    return spec;
+            }
+            return parseLayoutSpec("disabled");
+        }();
+        return layout;
+    }
+
+    static bool sidechainIsOptional()
+    {
+        static const bool optional = parseBoolString(RAU_SIDECHAIN_OPTIONAL);
+        return optional;
+    }
+
+    static bool isDisabledLayout(const LayoutSpec &layout)
+    {
+        return layout.channels == 0 || layout.token == "disabled";
+    }
+
+    static bool matchesLayout(const juce::AudioChannelSet &actual, const LayoutSpec &expected)
+    {
+        if (isDisabledLayout(expected))
+            return actual.isDisabled();
+        if (actual.isDisabled())
+            return false;
+        if (actual.size() != expected.channels)
+            return false;
+
+        // Prefer exact set matching for canonical JUCE layouts. For unsupported
+        // channel maps we gracefully fall back to channel-count matching.
+        auto expectedSet = toChannelSet(expected);
+        return expectedSet == actual || expectedSet.size() == actual.size();
+    }
+
+    static LayoutSpec describeChannelSet(const juce::AudioChannelSet &set)
+    {
+        if (set.isDisabled())
+            return {"disabled", 0};
+        if (set == juce::AudioChannelSet::mono())
+            return {"mono", 1};
+        if (set == juce::AudioChannelSet::stereo())
+            return {"stereo", 2};
+        if (set == juce::AudioChannelSet::createLCR())
+            return {"lcr", 3};
+        if (set == juce::AudioChannelSet::quadraphonic())
+            return {"quad", 4};
+        if (set == juce::AudioChannelSet::create5point0())
+            return {"5.0", 5};
+        if (set == juce::AudioChannelSet::create5point1())
+            return {"5.1", 6};
+        if (set == juce::AudioChannelSet::create6point0())
+            return {"6.0", 6};
+        if (set == juce::AudioChannelSet::create6point1())
+            return {"6.1", 7};
+        if (set == juce::AudioChannelSet::create7point0())
+            return {"7.0", 7};
+        if (set == juce::AudioChannelSet::create7point1())
+            return {"7.1", 8};
+
+        const int channels = set.size();
+        if (channels == 10)
+            return {"7.1.2", channels};
+        if (channels == 12)
+            return {"7.1.4", channels};
+        if (channels == 16)
+            return {"9.1.6", channels};
+        if (channels == 3)
+            return {"2.1", channels};
+        if (channels == 5)
+            return {"4.1", channels};
+        return {juce::String("discrete:") + juce::String(channels), channels};
+    }
 
     // ---------------------------------------------------------------------------
     // String-to-enum conversion tables for typed parameters
@@ -125,9 +424,15 @@ namespace rau
 
     PluginProcessor::PluginProcessor()
         : AudioProcessor(BusesProperties()
-                             .withInput("Input", juce::AudioChannelSet::stereo(), true)
-                             .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)
-                             .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+                             .withInput("Input",
+                                        toChannelSet(defaultMainInputLayout()),
+                                        !isDisabledLayout(defaultMainInputLayout()))
+                             .withInput("Sidechain",
+                                        toChannelSet(defaultSidechainLayout()),
+                                        !sidechainIsOptional())
+                             .withOutput("Output",
+                                         toChannelSet(defaultMainOutputLayout()),
+                                         true)),
           paramStore(*this),
           apvts(*this, nullptr, "Parameters", ParameterStore::createLayout())
     {
@@ -164,33 +469,61 @@ namespace rau
                                juce::String(sampleRate) + "}");
         webViewBridge.sendToJS("{\"type\":\"blockSize\",\"value\":" +
                                juce::String(samplesPerBlock) + "}");
+        sendAudioLayoutInfo();
 
         // Start analysis data timer (~30 fps)
         analysisTimer.startTimerHz(30);
     }
 
+    void PluginProcessor::numChannelsChanged()
+    {
+        sendAudioLayoutInfo();
+    }
+
     bool PluginProcessor::isBusesLayoutSupported(const BusesLayout &layouts) const
     {
-        // Main input/output must be stereo (or mono)
         auto mainIn = layouts.getMainInputChannelSet();
         auto mainOut = layouts.getMainOutputChannelSet();
 
-        if (mainOut != juce::AudioChannelSet::stereo() &&
-            mainOut != juce::AudioChannelSet::mono())
+        bool mainSupported = false;
+        for (const auto &layoutPair : mainLayoutPairs())
+        {
+            if (matchesLayout(mainIn, layoutPair.input) &&
+                matchesLayout(mainOut, layoutPair.output))
+            {
+                mainSupported = true;
+                break;
+            }
+        }
+        if (!mainSupported)
             return false;
 
-        // Input can be disabled (instrument) or mono/stereo
-        if (!mainIn.isDisabled() &&
-            mainIn != juce::AudioChannelSet::stereo() &&
-            mainIn != juce::AudioChannelSet::mono())
-            return false;
-
-        // Sidechain (bus index 1) can be disabled, mono, or stereo
+        // Sidechain (bus index 1) can be optional or required depending on config.
         if (layouts.inputBuses.size() > 1)
         {
             auto sc = layouts.inputBuses[1];
-            if (!sc.isDisabled() && sc != juce::AudioChannelSet::stereo() && sc != juce::AudioChannelSet::mono())
-                return false;
+
+            if (sc.isDisabled())
+            {
+                if (!sidechainIsOptional())
+                    return false;
+            }
+            else
+            {
+                bool sidechainSupported = false;
+                for (const auto &supported : sidechainLayouts())
+                {
+                    if (isDisabledLayout(supported))
+                        continue;
+                    if (matchesLayout(sc, supported))
+                    {
+                        sidechainSupported = true;
+                        break;
+                    }
+                }
+                if (!sidechainSupported)
+                    return false;
+            }
         }
 
         return true;
@@ -302,10 +635,33 @@ namespace rau
 
         // Process the audio graph using only the main bus buffer.
         // getBusBuffer returns a lightweight alias into `buffer` covering
-        // only the main stereo channels, so sidechain channels are not
+        // only the main bus channels, so sidechain channels are not
         // accidentally treated as main I/O.
         auto mainBuffer = getBusBuffer(buffer, true, 0);
         audioGraph.processBlock(mainBuffer, midi);
+    }
+
+    void PluginProcessor::sendAudioLayoutInfo()
+    {
+        auto layouts = getBusesLayout();
+        const auto mainIn = describeChannelSet(layouts.getMainInputChannelSet());
+        const auto mainOut = describeChannelSet(layouts.getMainOutputChannelSet());
+
+        juce::String json = "{\"type\":\"audioLayout\""
+                            ",\"mainInput\":{\"layout\":\"" +
+                            mainIn.token + "\",\"channels\":" + juce::String(mainIn.channels) + "}"
+                            ",\"mainOutput\":{\"layout\":\"" +
+                            mainOut.token + "\",\"channels\":" + juce::String(mainOut.channels) + "}";
+
+        if (layouts.inputBuses.size() > 1)
+        {
+            const auto sidechain = describeChannelSet(layouts.inputBuses[1]);
+            json += ",\"sidechainInput\":{\"layout\":\"" +
+                    sidechain.token + "\",\"channels\":" + juce::String(sidechain.channels) + "}";
+        }
+
+        json += "}";
+        webViewBridge.sendToJS(json);
     }
 
     // ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ namespace rau
         void prepareToPlay(double sampleRate, int samplesPerBlock) override;
         void releaseResources() override;
         void processBlock(juce::AudioBuffer<float> &, juce::MidiBuffer &) override;
+        void numChannelsChanged() override;
 
         juce::AudioProcessorEditor *createEditor() override;
         bool hasEditor() const override { return true; }
@@ -42,7 +43,14 @@ namespace rau
             return false;
 #endif
         }
-        bool producesMidi() const override { return false; }
+        bool producesMidi() const override
+        {
+#if JucePlugin_ProducesMidiOutput
+            return true;
+#else
+            return false;
+#endif
+        }
         double getTailLengthSeconds() const override { return 5.0; }
 
         int getNumPrograms() override { return 1; }
@@ -65,6 +73,9 @@ namespace rau
 
         /** Periodically read meter/spectrum analysis data and forward to JS. */
         void sendAnalysisData();
+
+        /** Notify JS about current host audio bus layouts. */
+        void sendAudioLayoutInfo();
 
         AudioGraph audioGraph;
         ParameterStore paramStore;

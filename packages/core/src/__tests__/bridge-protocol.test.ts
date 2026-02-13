@@ -126,6 +126,24 @@ describe("NativeBridge", () => {
     });
   });
 
+  it("should dispatch audioLayout messages", () => {
+    const handler = vi.fn();
+    bridge.onMessage(handler);
+
+    const msg: BridgeInMessage = {
+      type: "audioLayout",
+      mainInput: { layout: "stereo", channels: 2 },
+      mainOutput: { layout: "stereo", channels: 2 },
+      sidechainInput: { layout: "mono", channels: 1 },
+    };
+
+    bridge.dispatch(msg);
+
+    expect(handler).toHaveBeenCalledWith(msg);
+    expect(handler.mock.calls[0][0].mainInput.layout).toBe("stereo");
+    expect(handler.mock.calls[0][0].sidechainInput.channels).toBe(1);
+  });
+
   it("should dispatch requestState and restoreState", () => {
     const handler = vi.fn();
     bridge.onMessage(handler);

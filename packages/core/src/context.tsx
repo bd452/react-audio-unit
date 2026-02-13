@@ -17,6 +17,7 @@ import { autoInstallDevBridge } from "./dev-bridge.js";
 import type {
   AudioNodeDescriptor,
   BridgeInMessage,
+  HostAudioBusLayout,
   GraphOp,
   MidiEvent,
   ParameterConfig,
@@ -101,11 +102,20 @@ export const MidiContext = createContext<MidiEvent[]>([]);
 export interface HostInfo {
   sampleRate: number;
   blockSize: number;
+  audioLayout: {
+    mainInput: HostAudioBusLayout;
+    mainOutput: HostAudioBusLayout;
+    sidechainInput?: HostAudioBusLayout;
+  };
 }
 
 export const HostInfoContext = createContext<HostInfo>({
   sampleRate: 44100,
   blockSize: 512,
+  audioLayout: {
+    mainInput: { layout: "unknown", channels: 0 },
+    mainOutput: { layout: "unknown", channels: 0 },
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -140,6 +150,10 @@ export function PluginHost({ children }: PluginHostProps) {
   const [hostInfo, setHostInfo] = useState<HostInfo>({
     sampleRate: 44100,
     blockSize: 512,
+    audioLayout: {
+      mainInput: { layout: "unknown", channels: 0 },
+      mainOutput: { layout: "unknown", channels: 0 },
+    },
   });
 
   // Start a fresh graph collection for this render cycle. Doing this in render
@@ -177,6 +191,16 @@ export function PluginHost({ children }: PluginHostProps) {
           break;
         case "blockSize":
           setHostInfo((prev) => ({ ...prev, blockSize: msg.value }));
+          break;
+        case "audioLayout":
+          setHostInfo((prev) => ({
+            ...prev,
+            audioLayout: {
+              mainInput: msg.mainInput,
+              mainOutput: msg.mainOutput,
+              sidechainInput: msg.sidechainInput,
+            },
+          }));
           break;
         case "requestState": {
           // Native side requesting plugin state for save

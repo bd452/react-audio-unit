@@ -763,9 +763,22 @@ export default {
   version: '1.0.0',
   category: 'Effect',          // 'Effect' | 'Instrument' | 'Analyzer'
   formats: ['AU', 'VST3'],    // Target formats
-  channels: {
-    input: 2,                  // Stereo in
-    output: 2                  // Stereo out
+  io: {
+    audio: {
+      main: [
+        { input: 'mono', output: 'mono' },
+        { input: 'stereo', output: 'stereo' },
+        { input: '5.1', output: '5.1' }
+      ],
+      sidechain: {
+        supported: ['disabled', 'mono', 'stereo'],
+        optional: true
+      }
+    },
+    midi: {
+      input: false,
+      output: false
+    }
   },
   ui: {
     width: 600,

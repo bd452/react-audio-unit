@@ -8,6 +8,15 @@ export type {
   BridgeInMessage,
   ParameterConfig,
   MidiEvent,
+  HostAudioBusLayout,
+  AudioChannelLayoutName,
+  DiscreteAudioChannelLayout,
+  AudioChannelLayout,
+  AudioMainBusArrangement,
+  AudioSidechainConfig,
+  PluginAudioIOConfig,
+  PluginMidiIOConfig,
+  PluginIOConfig,
   PluginConfig,
 } from "./types.js";
 

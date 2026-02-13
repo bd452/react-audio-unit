@@ -145,10 +145,28 @@ export default {
   version: "1.0.0",
   category: "Effect",         // "Effect" | "Instrument" | "Analyzer"
   formats: ["AU", "VST3"],
-  channels: { input: 2, output: 2 },
+  io: {
+    audio: {
+      main: [
+        { input: "mono", output: "mono" },
+        { input: "stereo", output: "stereo" },
+        { input: "5.1", output: "5.1" },
+      ],
+      sidechain: {
+        supported: ["disabled", "mono", "stereo"],
+        optional: true,
+      },
+    },
+    midi: {
+      input: false,
+      output: false,
+    },
+  },
   ui: { width: 600, height: 400, resizable: false },
 };
 ```
+
+Legacy `channels: { input, output }` is still supported for backward compatibility, but `io.audio` + `io.midi` is recommended for explicit format negotiation.
 
 ## Signal Chaining
 

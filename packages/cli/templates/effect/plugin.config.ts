@@ -8,9 +8,21 @@ export default {
   version: "1.0.0",
   category: "Effect",
   formats: ["AU", "VST3"],
-  channels: {
-    input: 2,
-    output: 2,
+  io: {
+    audio: {
+      main: [
+        { input: "mono", output: "mono" },
+        { input: "stereo", output: "stereo" },
+      ],
+      sidechain: {
+        supported: ["disabled", "mono", "stereo"],
+        optional: true,
+      },
+    },
+    midi: {
+      input: false,
+      output: false,
+    },
   },
   ui: {
     width: 600,

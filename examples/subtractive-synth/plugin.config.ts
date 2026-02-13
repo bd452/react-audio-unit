@@ -8,9 +8,14 @@ export default {
   version: "1.0.0",
   category: "Instrument",
   formats: ["AU", "VST3"],
-  channels: {
-    input: 0,
-    output: 2,
+  io: {
+    audio: {
+      main: [{ input: "disabled", output: "stereo" }],
+    },
+    midi: {
+      input: true,
+      output: false,
+    },
   },
   ui: {
     width: 750,
