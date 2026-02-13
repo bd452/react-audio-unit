@@ -57,19 +57,26 @@ namespace rau
     {
         juce::WebBrowserComponent::Options options;
 
-        // Register native function for JS → C++ messages.
-        // The JS bridge calls: window.__JUCE__.backend.emitEvent("rau_js_message", jsonStr)
-        // JUCE translates that into a call to this native function.
-        options = options.withNativeFunction(
+        // Enable JUCE's JS backend integration (`window.__JUCE__.backend`).
+        options = options.withNativeIntegrationEnabled();
+
+        // Register an event listener for JS → C++ bridge messages.
+        // The JS bridge sends: window.__JUCE__.backend.emitEvent("rau_js_message", payload)
+        options = options.withEventListener(
             "rau_js_message",
-            [this](const juce::Array<juce::var> &args,
-                   juce::WebBrowserComponent::NativeFunctionCompletion completion)
+            [this](const juce::var &payload)
             {
-                if (args.size() > 0 && jsMessageCallback)
+                if (!jsMessageCallback)
+                    return;
+
+                if (payload.isString())
                 {
-                    jsMessageCallback(args[0].toString());
+                    jsMessageCallback(payload.toString());
+                    return;
                 }
-                completion({});
+
+                // Fallback: if JS sent an object, normalize it to JSON text.
+                jsMessageCallback(juce::JSON::toString(payload));
             });
 
         options = options.withKeepPageLoadedWhenBrowserIsHidden();

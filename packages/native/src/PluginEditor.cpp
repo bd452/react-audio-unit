@@ -8,7 +8,7 @@ namespace rau
     {
         setSize(RAU_UI_WIDTH, RAU_UI_HEIGHT);
 
-        // Get bridge-configured options (includes JS→C++ native function)
+        // Get bridge-configured options (includes JS→C++ bridge wiring)
         auto options = processor.getWebViewBridge().createWebViewOptions();
 
 #if RAU_EMBEDDED_UI
@@ -75,8 +75,24 @@ namespace rau
 #if RAU_EMBEDDED_UI
         webView->goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
 #else
+#if JUCE_DEBUG
         // Development mode: connect to Vite dev server
         webView->goToURL("http://localhost:5173");
+#else
+        // In release builds, don't silently rely on a dev server.
+        const auto html = juce::String(
+            "<!doctype html><html><head><meta charset='utf-8'/>"
+            "<title>React Audio Unit</title></head>"
+            "<body style='margin:0;background:#111;color:#eee;"
+            "font-family:sans-serif;padding:16px;'>"
+            "<h3 style='margin:0 0 8px 0;'>Embedded UI Missing</h3>"
+            "<p style='margin:0;'>This build was created without bundled web assets. "
+            "Rebuild with a generated dist/ui/index.html to load the plugin UI.</p>"
+            "</body></html>");
+
+        webView->goToURL("data:text/html;charset=utf-8," +
+                         juce::URL::addEscapeChars(html, true));
+#endif
 #endif
     }
 

@@ -17,6 +17,7 @@ import { autoInstallDevBridge } from "./dev-bridge.js";
 import type {
   AudioNodeDescriptor,
   BridgeInMessage,
+  GraphOp,
   MidiEvent,
   ParameterConfig,
 } from "./types.js";
@@ -141,6 +142,10 @@ export function PluginHost({ children }: PluginHostProps) {
     blockSize: 512,
   });
 
+  // Start a fresh graph collection for this render cycle. Doing this in render
+  // keeps reconciliation idempotent under React StrictMode's extra effect pass.
+  graphRef.current.clear();
+
   // Connect the bridge on mount
   useEffect(() => {
     // Auto-install dev bridge for browser preview if not in JUCE WebView
@@ -257,33 +262,39 @@ export function PluginHost({ children }: PluginHostProps) {
     );
 
     if (ops.length > 0) {
-      // Check if the fast path can handle all params. String enum
-      // params (e.g. filterType: "lowpass") require the native-side
-      // varToFloat conversion which only runs in the full graphOps
-      // path. If any updateParams op contains string values, we must
-      // fall back to the full path.
-      const canUseFastPath =
-        paramOnly &&
-        ops.every(
-          (op) =>
-            op.op !== "updateParams" ||
-            Object.values(op.params).every((v) => typeof v !== "string"),
-        );
-
-      if (canUseFastPath) {
+      if (paramOnly) {
         // Fast path: only parameters changed — send direct atomic updates
         // instead of full graph operations. This avoids the op queue and
         // topological re-sort on the audio thread.
+        // Ops whose values are all numbers or booleans can use the fast path
+        // (booleans are converted to 0/1). Ops containing string values
+        // (e.g. filterType: "lowpass") require the native-side varToFloat
+        // conversion, so they fall back to graphOps.
+        const fallbackOps: GraphOp[] = [];
+
         for (const op of ops) {
-          if (op.op === "updateParams") {
-            for (const [paramName, value] of Object.entries(op.params)) {
-              if (typeof value === "number") {
-                bridge.sendParamUpdate(op.nodeId, paramName, value);
-              } else if (typeof value === "boolean") {
-                bridge.sendParamUpdate(op.nodeId, paramName, value ? 1 : 0);
-              }
+          if (op.op !== "updateParams") continue;
+
+          const canFastPath = Object.values(op.params).every(
+            (value) => typeof value === "number" || typeof value === "boolean",
+          );
+
+          if (!canFastPath) {
+            fallbackOps.push(op);
+            continue;
+          }
+
+          for (const [paramName, value] of Object.entries(op.params)) {
+            if (typeof value === "number") {
+              bridge.sendParamUpdate(op.nodeId, paramName, value);
+            } else if (typeof value === "boolean") {
+              bridge.sendParamUpdate(op.nodeId, paramName, value ? 1 : 0);
             }
           }
+        }
+
+        if (fallbackOps.length > 0) {
+          bridge.sendGraphOps(fallbackOps);
         }
       } else {
         bridge.sendGraphOps(ops);

@@ -229,8 +229,12 @@ function handleDevMessage(msg: BridgeOutMessage): void {
 export function autoInstallDevBridge(
   dispatch: (msg: BridgeInMessage) => void,
 ): void {
+  const protocol = typeof window !== "undefined" ? window.location.protocol : "";
+  const isBrowserPreview = protocol === "http:" || protocol === "https:";
+
   if (
     typeof window !== "undefined" &&
+    isBrowserPreview &&
     !(window as any).__JUCE__ &&
     !(globalThis as any).__RAU_DEV_BRIDGE__
   ) {
