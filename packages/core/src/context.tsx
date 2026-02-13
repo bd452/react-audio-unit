@@ -247,7 +247,20 @@ export function PluginHost({ children }: PluginHostProps) {
     );
 
     if (ops.length > 0) {
-      if (paramOnly) {
+      // Check if the fast path can handle all params. String enum
+      // params (e.g. filterType: "lowpass") require the native-side
+      // varToFloat conversion which only runs in the full graphOps
+      // path. If any updateParams op contains string values, we must
+      // fall back to the full path.
+      const canUseFastPath =
+        paramOnly &&
+        ops.every(
+          (op) =>
+            op.op !== "updateParams" ||
+            Object.values(op.params).every((v) => typeof v !== "string"),
+        );
+
+      if (canUseFastPath) {
         // Fast path: only parameters changed — send direct atomic updates
         // instead of full graph operations. This avoids the op queue and
         // topological re-sort on the audio thread.
@@ -256,6 +269,8 @@ export function PluginHost({ children }: PluginHostProps) {
             for (const [paramName, value] of Object.entries(op.params)) {
               if (typeof value === "number") {
                 bridge.sendParamUpdate(op.nodeId, paramName, value);
+              } else if (typeof value === "boolean") {
+                bridge.sendParamUpdate(op.nodeId, paramName, value ? 1 : 0);
               }
             }
           }
