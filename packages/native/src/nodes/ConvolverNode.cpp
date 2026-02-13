@@ -21,6 +21,9 @@ namespace rau
         spec.numChannels = 2;
         convolution.prepare(spec);
 
+        // Pre-allocate the wet buffer so process() never allocates on the audio thread
+        wetBuffer.setSize(2, blockSize);
+
         mixSmoothed.reset(sr, 0.02); // 20ms smoothing
         mixSmoothed.setCurrentAndTargetValue(getParam("mix"));
     }
@@ -58,8 +61,7 @@ namespace rau
         float gain = getParam("gain");
         mixSmoothed.setTargetValue(mix);
 
-        // Create a copy for the wet signal
-        juce::AudioBuffer<float> wetBuffer(numCh, numSamples);
+        // Use the pre-allocated wet buffer (sized in prepare())
         for (int ch = 0; ch < numCh; ++ch)
             wetBuffer.copyFrom(ch, 0, outBuf, ch, 0, numSamples);
 

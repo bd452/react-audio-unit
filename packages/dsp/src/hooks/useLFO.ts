@@ -1,5 +1,11 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import {
+  PARAM_LFO_RATE,
+  PARAM_LFO_SHAPE,
+  PARAM_LFO_DEPTH,
+  PARAM_LFO_PHASE,
+} from "../param-keys.js";
 
 export type LFOShape = "sine" | "triangle" | "saw" | "square" | "random";
 
@@ -12,8 +18,6 @@ export interface LFOParams {
   depth?: number;
   /** Phase offset in degrees (0–360). */
   phase?: number;
-  /** Sync to host tempo (rate becomes a beat division). */
-  tempoSync?: boolean;
 }
 
 /**
@@ -24,10 +28,9 @@ export interface LFOParams {
  */
 export function useLFO(params: LFOParams): Signal {
   return useAudioNode("lfo", {
-    rate: params.rate,
-    shape: params.shape,
-    depth: params.depth ?? 1,
-    phase: params.phase ?? 0,
-    tempoSync: params.tempoSync ?? false,
+    [PARAM_LFO_RATE]: params.rate,
+    [PARAM_LFO_SHAPE]: params.shape,
+    [PARAM_LFO_DEPTH]: params.depth ?? 1,
+    [PARAM_LFO_PHASE]: params.phase ?? 0,
   });
 }

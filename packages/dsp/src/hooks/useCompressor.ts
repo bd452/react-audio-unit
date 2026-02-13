@@ -1,5 +1,14 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import {
+  PARAM_THRESHOLD,
+  PARAM_RATIO,
+  PARAM_ATTACK,
+  PARAM_RELEASE,
+  PARAM_KNEE,
+  PARAM_MAKEUP_DB,
+  PARAM_BYPASS,
+} from "../param-keys.js";
 
 export interface CompressorParams {
   /** Threshold in dB. */
@@ -31,13 +40,13 @@ export function useCompressor(
   return useAudioNode(
     "compressor",
     {
-      threshold: params.threshold,
-      ratio: params.ratio,
-      attack: params.attack,
-      release: params.release,
-      knee: params.knee ?? 0,
-      makeupDb: params.makeupDb ?? 0,
-      bypass: params.bypass ?? false,
+      [PARAM_THRESHOLD]: params.threshold,
+      [PARAM_RATIO]: params.ratio,
+      [PARAM_ATTACK]: params.attack,
+      [PARAM_RELEASE]: params.release,
+      [PARAM_KNEE]: params.knee ?? 0,
+      [PARAM_MAKEUP_DB]: params.makeupDb ?? 0,
+      [PARAM_BYPASS]: params.bypass ?? false,
     },
     inputs,
   );

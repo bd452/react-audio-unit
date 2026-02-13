@@ -1,5 +1,11 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import {
+  PARAM_WAVEFORM,
+  PARAM_FREQUENCY,
+  PARAM_DETUNE,
+  PARAM_BYPASS,
+} from "../param-keys.js";
 
 export type WaveformType = "sine" | "saw" | "square" | "triangle";
 
@@ -10,8 +16,6 @@ export interface OscillatorParams {
   frequency?: number;
   /** Detune in cents. */
   detune?: number;
-  /** Number of unison voices. */
-  unison?: number;
   bypass?: boolean;
 }
 
@@ -42,11 +46,10 @@ export function useOscillator(
   return useAudioNode(
     "oscillator",
     {
-      waveform: params.waveform,
-      frequency: params.frequency ?? 440,
-      detune: params.detune ?? 0,
-      unison: params.unison ?? 1,
-      bypass: params.bypass ?? false,
+      [PARAM_WAVEFORM]: params.waveform,
+      [PARAM_FREQUENCY]: params.frequency ?? 440,
+      [PARAM_DETUNE]: params.detune ?? 0,
+      [PARAM_BYPASS]: params.bypass ?? false,
     },
     inputs,
   );

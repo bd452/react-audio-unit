@@ -240,6 +240,16 @@ export function PluginHost({ children }: PluginHostProps) {
   // useEffect fires after the render is committed, at which point all
   // DSP hooks have registered their nodes into graphRef.current.
   useEffect(() => {
+    // Guard against React 18 StrictMode double-firing effects.
+    // In StrictMode (dev only), effects run → cleanup → run again without
+    // an intervening render. The first run clears the graph, so the second
+    // run sees an empty graph and would incorrectly tear down the native
+    // audio graph. The dirty flag ensures we only reconcile when DSP hooks
+    // have actually registered nodes during a render.
+    if (!graphRef.current.isDirty()) {
+      return;
+    }
+
     const nextSnapshot = graphRef.current.snapshot();
     const { ops, paramOnly } = diffGraphsFull(
       prevSnapshotRef.current,
@@ -283,7 +293,7 @@ export function PluginHost({ children }: PluginHostProps) {
     prevSnapshotRef.current = nextSnapshot;
 
     // Clear the live graph for the next render cycle
-    // (this also resets the call index counter)
+    // (this also resets the call index counter and dirty flag)
     graphRef.current.clear();
   });
 
