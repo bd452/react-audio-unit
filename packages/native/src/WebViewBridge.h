@@ -13,7 +13,7 @@ namespace rau
      * WebViewBridge — manages bidirectional communication between
      * the JUCE C++ plugin and the React UI running in a WebView.
      *
-     * JS → C++: via JUCE WebBrowserComponent's native function mechanism
+     * JS → C++: via JUCE WebBrowserComponent event listener integration
      * C++ → JS: via evaluateJavascript() dispatched on the message thread
      *
      * The bridge does NOT own the WebBrowserComponent. The PluginEditor
@@ -27,7 +27,7 @@ namespace rau
 
         /**
          * Get the WebBrowserComponent::Options configured with the
-         * JS→C++ native function. The caller (PluginEditor) uses these
+         * JS→C++ event listener bridge. The caller (PluginEditor) uses these
          * options to create the WebBrowserComponent.
          */
         juce::WebBrowserComponent::Options createWebViewOptions();

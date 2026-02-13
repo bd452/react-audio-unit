@@ -17,6 +17,7 @@ import { autoInstallDevBridge } from "./dev-bridge.js";
 import type {
   AudioNodeDescriptor,
   BridgeInMessage,
+  GraphOp,
   MidiEvent,
   ParameterConfig,
 } from "./types.js";
@@ -141,6 +142,10 @@ export function PluginHost({ children }: PluginHostProps) {
     blockSize: 512,
   });
 
+  // Start a fresh graph collection for this render cycle. Doing this in render
+  // keeps reconciliation idempotent under React StrictMode's extra effect pass.
+  graphRef.current.clear();
+
   // Connect the bridge on mount
   useEffect(() => {
     // Auto-install dev bridge for browser preview if not in JUCE WebView
@@ -248,17 +253,30 @@ export function PluginHost({ children }: PluginHostProps) {
 
     if (ops.length > 0) {
       if (paramOnly) {
-        // Fast path: only parameters changed — send direct atomic updates
-        // instead of full graph operations. This avoids the op queue and
-        // topological re-sort on the audio thread.
+        // Fast path: only numeric params changed — send direct atomic updates.
+        // If any updated param is non-numeric (string/boolean), fall back to
+        // updateParams graph ops so native side can run enum/bool conversion.
+        const fallbackOps: GraphOp[] = [];
+
         for (const op of ops) {
-          if (op.op === "updateParams") {
-            for (const [paramName, value] of Object.entries(op.params)) {
-              if (typeof value === "number") {
-                bridge.sendParamUpdate(op.nodeId, paramName, value);
-              }
-            }
+          if (op.op !== "updateParams") continue;
+
+          const numericOnly = Object.values(op.params).every(
+            (value) => typeof value === "number",
+          );
+
+          if (!numericOnly) {
+            fallbackOps.push(op);
+            continue;
           }
+
+          for (const [paramName, value] of Object.entries(op.params)) {
+            bridge.sendParamUpdate(op.nodeId, paramName, value as number);
+          }
+        }
+
+        if (fallbackOps.length > 0) {
+          bridge.sendGraphOps(fallbackOps);
         }
       } else {
         bridge.sendGraphOps(ops);
@@ -266,10 +284,6 @@ export function PluginHost({ children }: PluginHostProps) {
     }
 
     prevSnapshotRef.current = nextSnapshot;
-
-    // Clear the live graph for the next render cycle
-    // (this also resets the call index counter)
-    graphRef.current.clear();
   });
 
   return (
