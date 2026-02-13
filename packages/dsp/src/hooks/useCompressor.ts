@@ -9,6 +9,7 @@ import {
   PARAM_MAKEUP_DB,
   PARAM_BYPASS,
 } from "../param-keys.js";
+// PARAM_ATTACK and PARAM_RELEASE are shared constants (same string as envelope).
 
 export interface CompressorParams {
   /** Threshold in dB. */

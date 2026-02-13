@@ -273,7 +273,12 @@ export function PluginHost({ children }: PluginHostProps) {
         const fallbackOps: GraphOp[] = [];
 
         for (const op of ops) {
-          if (op.op !== "updateParams") continue;
+          if (op.op !== "updateParams") {
+            // Shouldn't happen when paramOnly is true, but handle
+            // gracefully rather than silently dropping the op.
+            fallbackOps.push(op);
+            continue;
+          }
 
           const canFastPath = Object.values(op.params).every(
             (value) => typeof value === "number" || typeof value === "boolean",
@@ -303,8 +308,10 @@ export function PluginHost({ children }: PluginHostProps) {
 
     prevSnapshotRef.current = nextSnapshot;
 
-    // Clear the live graph for the next render cycle
-    // (this also resets the call index counter and dirty flag)
+    // Eagerly clear for the next render cycle. The render body also calls
+    // clear() (for StrictMode safety), so this is technically redundant,
+    // but it keeps the graph empty between effect and next render to avoid
+    // stale reads and resets the call index counter immediately.
     graphRef.current.clear();
   });
 

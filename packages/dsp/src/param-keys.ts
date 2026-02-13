@@ -30,8 +30,9 @@ export const PARAM_GAIN_DB = "gainDb";
 // --- CompressorNode -------------------------------------------------------
 export const PARAM_THRESHOLD = "threshold";
 export const PARAM_RATIO = "ratio";
-export const PARAM_ATTACK = "attack";
-export const PARAM_RELEASE = "release";
+// NOTE: compressor and envelope share the same "attack" / "release" param
+// strings — they're distinguished by node ID, not param key. Use the
+// common PARAM_ATTACK / PARAM_RELEASE constants below for both.
 export const PARAM_KNEE = "knee";
 export const PARAM_MAKEUP_DB = "makeupDb";
 
@@ -60,11 +61,13 @@ export const PARAM_LFO_RATE = "rate";
 export const PARAM_LFO_DEPTH = "depth";
 export const PARAM_LFO_PHASE = "phase";
 
+// --- Shared time-based params (compressor & envelope) ---------------------
+export const PARAM_ATTACK = "attack";
+export const PARAM_RELEASE = "release";
+
 // --- EnvelopeNode ---------------------------------------------------------
-export const PARAM_ENV_ATTACK = "attack";
-export const PARAM_ENV_DECAY = "decay";
-export const PARAM_ENV_SUSTAIN = "sustain";
-export const PARAM_ENV_RELEASE = "release";
+export const PARAM_DECAY = "decay";
+export const PARAM_SUSTAIN = "sustain";
 
 // --- MeterNode ------------------------------------------------------------
 export const PARAM_METER_TYPE = "meterType";

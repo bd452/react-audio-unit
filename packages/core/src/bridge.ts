@@ -24,6 +24,15 @@ export class NativeBridge {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
+   * Max messages to buffer while waiting for the backend. Beyond this
+   * limit new messages are silently dropped to prevent memory leaks if
+   * the native side never becomes available.
+   */
+  private static readonly MAX_PENDING = 512;
+  private static readonly MAX_FLUSH_ATTEMPTS = 100; // ~5 s at 50 ms intervals
+  private flushAttempts = 0;
+
+  /**
    * Initialize the bridge. Call once at plugin startup.
    * Detects the runtime environment (JUCE WebView vs browser) and sets
    * up the appropriate transport.
@@ -51,11 +60,14 @@ export class NativeBridge {
   send(msg: BridgeOutMessage): void {
     // Try immediate delivery. If the backend isn't ready yet, queue and retry.
     if (this.trySend(msg)) {
+      this.flushAttempts = 0;
       this.flushPending();
       return;
     }
 
-    this.pendingMessages.push(msg);
+    if (this.pendingMessages.length < NativeBridge.MAX_PENDING) {
+      this.pendingMessages.push(msg);
+    }
     this.scheduleFlush();
   }
 
@@ -117,13 +129,23 @@ export class NativeBridge {
 
   private scheduleFlush(): void {
     if (this.flushTimer !== null) return;
+    if (this.flushAttempts >= NativeBridge.MAX_FLUSH_ATTEMPTS) {
+      // Give up — the backend is not coming. Drop remaining messages
+      // to avoid leaking memory or burning CPU indefinitely.
+      this.pendingMessages.length = 0;
+      return;
+    }
 
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
+      this.flushAttempts++;
       this.flushPending();
 
       if (this.pendingMessages.length > 0) {
         this.scheduleFlush();
+      } else {
+        // All messages delivered — reset attempt counter for future sends.
+        this.flushAttempts = 0;
       }
     }, 50);
   }
