@@ -1,3 +1,6 @@
+// Canonical parameter key constants (shared source of truth with C++ nodes)
+export * from "./param-keys.js";
+
 // Core audio node hook
 export { useAudioNode } from "./useAudioNode.js";
 

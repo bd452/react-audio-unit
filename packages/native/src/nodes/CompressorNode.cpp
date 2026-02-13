@@ -13,7 +13,7 @@ namespace rau
         addParam("attack", 10.0f);    // ms
         addParam("release", 100.0f);  // ms
         addParam("knee", 0.0f);       // dB
-        addParam("makeupGain", 0.0f); // dB
+        addParam("makeupDb", 0.0f);   // dB — canonical key from param-keys.ts
         addParam("bypass", 0.0f);
     }
 
@@ -37,7 +37,7 @@ namespace rau
         const float attackMs = std::max(0.01f, getParam("attack"));
         const float releaseMs = std::max(0.01f, getParam("release"));
         const float kneeWidth = std::max(0.0f, getParam("knee"));
-        const float makeupDb = getParam("makeupGain");
+        const float makeupDb = getParam("makeupDb");
         const float makeupLinear = std::pow(10.0f, makeupDb / 20.0f);
 
         // Smoothing coefficients

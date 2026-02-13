@@ -11,13 +11,26 @@ export class VirtualAudioGraph {
   private nodes = new Map<string, AudioNodeDescriptor>();
   private outputNodeId: string | null = null;
   private callIndex = 0;
+  private _dirty = false;
 
   registerNode(descriptor: AudioNodeDescriptor): void {
     this.nodes.set(descriptor.id, descriptor);
+    this._dirty = true;
   }
 
   setOutputNode(nodeId: string): void {
     this.outputNodeId = nodeId;
+    this._dirty = true;
+  }
+
+  /**
+   * Returns true if any nodes or the output node have been registered
+   * since the last `clear()`. Used to guard against React StrictMode
+   * double-firing the reconciliation effect — if no render happened
+   * between two effect runs, the graph is clean and should be skipped.
+   */
+  isDirty(): boolean {
+    return this._dirty;
   }
 
   getNode(id: string): AudioNodeDescriptor | undefined {
@@ -44,6 +57,7 @@ export class VirtualAudioGraph {
     this.nodes.clear();
     this.outputNodeId = null;
     this.callIndex = 0;
+    this._dirty = false;
   }
 
   /**
