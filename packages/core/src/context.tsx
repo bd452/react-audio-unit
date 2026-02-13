@@ -16,11 +16,14 @@ import { bridge, NativeBridge } from "./bridge.js";
 import { autoInstallDevBridge } from "./dev-bridge.js";
 import type {
   AudioNodeDescriptor,
+  ActiveIOConfig,
   BridgeInMessage,
   GraphOp,
   MidiEvent,
   ParameterConfig,
+  PluginIOConfig,
 } from "./types.js";
+import { defaultActiveConfig } from "./io-negotiation.js";
 
 // ---------------------------------------------------------------------------
 // Audio Graph Context — used by DSP hooks to register nodes
@@ -89,10 +92,32 @@ export const TransportContext = createContext<TransportState>({
 });
 
 // ---------------------------------------------------------------------------
-// MIDI Context
+// MIDI Context (per-bus)
 // ---------------------------------------------------------------------------
 
-export const MidiContext = createContext<MidiEvent[]>([]);
+/**
+ * MIDI events indexed by bus. Each key is the bus index (0-based), and the
+ * value is the array of events for that bus in the current block.
+ *
+ * The legacy single-bus case uses bus index 0.
+ */
+export type MidiBusEvents = Map<number, MidiEvent[]>;
+
+export const MidiContext = createContext<MidiBusEvents>(new Map());
+
+// ---------------------------------------------------------------------------
+// Active I/O Config Context
+// ---------------------------------------------------------------------------
+
+/**
+ * Provides the negotiated/active I/O configuration to the component tree.
+ * DSP hooks can read this to know the current channel layout of each bus,
+ * enabling them to adapt their processing accordingly.
+ */
+export const IOConfigContext = createContext<ActiveIOConfig>({
+  audio: { inputs: [], outputs: [] },
+  midi: { inputs: [], outputs: [] },
+});
 
 // ---------------------------------------------------------------------------
 // Host Info Context
@@ -114,6 +139,14 @@ export const HostInfoContext = createContext<HostInfo>({
 
 export interface PluginHostProps {
   children: ReactNode;
+  /**
+   * Plugin I/O configuration. When provided, the PluginHost sends it to
+   * the native side on mount and sets up the active I/O context.
+   *
+   * If omitted, a default stereo-in/stereo-out configuration is used
+   * (or inferred from the legacy `channels` config).
+   */
+  io?: PluginIOConfig;
 }
 
 /**
@@ -123,7 +156,7 @@ export interface PluginHostProps {
  *  - Graph reconciliation on each render cycle
  *  - Transport, MIDI, and host info contexts
  */
-export function PluginHost({ children }: PluginHostProps) {
+export function PluginHost({ children, io }: PluginHostProps) {
   const graphRef = useRef(new VirtualAudioGraph());
   const prevSnapshotRef = useRef<VirtualAudioGraphSnapshot | null>(null);
   const paramRegistryRef = useRef(new Map<string, ParameterEntry>());
@@ -136,11 +169,16 @@ export function PluginHost({ children }: PluginHostProps) {
     timeSigNum: 4,
     timeSigDen: 4,
   });
-  const [midiEvents, setMidiEvents] = useState<MidiEvent[]>([]);
+  const [midiBusEvents, setMidiBusEvents] = useState<MidiBusEvents>(new Map());
   const [hostInfo, setHostInfo] = useState<HostInfo>({
     sampleRate: 44100,
     blockSize: 512,
   });
+
+  // Active I/O config — starts with defaults, updated on host negotiation
+  const [activeIO, setActiveIO] = useState<ActiveIOConfig>(() =>
+    io ? defaultActiveConfig(io) : { audio: { inputs: [], outputs: [] }, midi: { inputs: [], outputs: [] } },
+  );
 
   // Start a fresh graph collection for this render cycle. Doing this in render
   // keeps reconciliation idempotent under React StrictMode's extra effect pass.
@@ -152,6 +190,11 @@ export function PluginHost({ children }: PluginHostProps) {
     autoInstallDevBridge((msg) => bridge.dispatch(msg));
 
     bridge.connect();
+
+    // Declare I/O config to native side on mount
+    if (io) {
+      bridge.send({ type: "declareIOConfig", config: io });
+    }
 
     const unsub = bridge.onMessage((msg: BridgeInMessage) => {
       switch (msg.type) {
@@ -170,7 +213,14 @@ export function PluginHost({ children }: PluginHostProps) {
           });
           break;
         case "midi":
-          setMidiEvents(msg.events);
+          setMidiBusEvents((prev) => {
+            const next = new Map(prev);
+            next.set(msg.busIndex ?? 0, msg.events);
+            return next;
+          });
+          break;
+        case "ioConfigChanged":
+          setActiveIO(msg.config);
           break;
         case "sampleRate":
           setHostInfo((prev) => ({ ...prev, sampleRate: msg.value }));
@@ -325,13 +375,15 @@ export function PluginHost({ children }: PluginHostProps) {
   return (
     <AudioGraphContext.Provider value={graphContext}>
       <ParameterRegistryContext.Provider value={paramRegistryContext}>
-        <TransportContext.Provider value={transport}>
-          <MidiContext.Provider value={midiEvents}>
-            <HostInfoContext.Provider value={hostInfo}>
-              {children}
-            </HostInfoContext.Provider>
-          </MidiContext.Provider>
-        </TransportContext.Provider>
+        <IOConfigContext.Provider value={activeIO}>
+          <TransportContext.Provider value={transport}>
+            <MidiContext.Provider value={midiBusEvents}>
+              <HostInfoContext.Provider value={hostInfo}>
+                {children}
+              </HostInfoContext.Provider>
+            </MidiContext.Provider>
+          </TransportContext.Provider>
+        </IOConfigContext.Provider>
       </ParameterRegistryContext.Provider>
     </AudioGraphContext.Provider>
   );
