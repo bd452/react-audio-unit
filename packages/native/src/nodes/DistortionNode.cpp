@@ -9,7 +9,7 @@ namespace rau
         nodeType = "distortion";
         addParam("distortionType", 0.0f); // soft
         addParam("drive", 1.0f);
-        addParam("outputGain", 0.5f);
+        addParam("outputGain", 1.0f);  // canonical key from param-keys.ts
         addParam("mix", 1.0f);
         addParam("bypass", 0.0f);
     }

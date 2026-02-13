@@ -63,6 +63,11 @@ namespace rau
         std::string outputNodeId;
         std::string inputNodeId;
         std::unordered_map<int, std::string> inputNodeIds; // bus index → node ID
+
+        // Fast node lookup for the audio thread (raw pointers, no ownership).
+        // Populated during rebuildAndPublishSnapshot so the audio thread never
+        // touches the authoritative `nodes` map.
+        std::unordered_map<std::string, AudioNodeBase *> nodeMap;
     };
 
     /**
@@ -93,6 +98,9 @@ namespace rau
         // Called from message thread — queues an operation for the audio thread
         void queueOp(GraphOp op);
 
+        // Batch multiple topology ops, rebuilding the snapshot only once at the end
+        void queueOps(std::vector<GraphOp> ops);
+
         // Called from message thread — direct parameter update (fast path)
         void setNodeParam(const std::string &nodeId, const std::string &param, float value);
 
@@ -106,6 +114,7 @@ namespace rau
         std::vector<AudioNodeBase *> getNodesByType(const std::string &type) const;
 
     private:
+        void applyTopologyOp(const GraphOp &op);
         void applyPendingOps();
         void rebuildAndPublishSnapshot();
         static void buildProcessingOrder(

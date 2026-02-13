@@ -1,5 +1,11 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import {
+  PARAM_DELAY_TIME,
+  PARAM_FEEDBACK,
+  PARAM_MIX,
+  PARAM_BYPASS,
+} from "../param-keys.js";
 
 export interface DelayParams {
   /** Delay time in milliseconds. */
@@ -21,10 +27,10 @@ export function useDelay(input: Signal, params: DelayParams): Signal {
   return useAudioNode(
     "delay",
     {
-      time: params.time,
-      feedback: params.feedback ?? 0,
-      mix: params.mix ?? 1,
-      bypass: params.bypass ?? false,
+      [PARAM_DELAY_TIME]: params.time,
+      [PARAM_FEEDBACK]: params.feedback ?? 0,
+      [PARAM_MIX]: params.mix ?? 1,
+      [PARAM_BYPASS]: params.bypass ?? false,
     },
     [input],
   );

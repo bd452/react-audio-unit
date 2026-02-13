@@ -63,18 +63,18 @@ export default function Plugin() {
     curve: "logarithmic",
   });
 
-  // Envelope
+  // Envelope (times are in milliseconds — matches useEnvelope / EnvelopeNode)
   const [attack, setAttack] = useParameter("env_attack", {
-    default: 0.01,
-    min: 0.001,
-    max: 2.0,
+    default: 10,
+    min: 1,
+    max: 2000,
     label: "Attack",
     curve: "logarithmic",
   });
   const [decay, setDecay] = useParameter("env_decay", {
-    default: 0.2,
-    min: 0.001,
-    max: 2.0,
+    default: 200,
+    min: 1,
+    max: 2000,
     label: "Decay",
     curve: "logarithmic",
   });
@@ -85,9 +85,9 @@ export default function Plugin() {
     label: "Sustain",
   });
   const [release, setRelease] = useParameter("env_release", {
-    default: 0.3,
-    min: 0.001,
-    max: 5.0,
+    default: 300,
+    min: 1,
+    max: 5000,
     label: "Release",
     curve: "logarithmic",
   });
@@ -199,15 +199,15 @@ export default function Plugin() {
           <Knob
             label="Attack"
             value={attack}
-            min={0.001}
-            max={2}
+            min={1}
+            max={2000}
             onChange={setAttack}
           />
           <Knob
             label="Decay"
             value={decay}
-            min={0.001}
-            max={2}
+            min={1}
+            max={2000}
             onChange={setDecay}
           />
           <Knob
@@ -220,8 +220,8 @@ export default function Plugin() {
           <Knob
             label="Release"
             value={release}
-            min={0.001}
-            max={5}
+            min={1}
+            max={5000}
             onChange={setRelease}
           />
         </Panel>

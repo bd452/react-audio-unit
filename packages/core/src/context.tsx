@@ -17,6 +17,7 @@ import { autoInstallDevBridge } from "./dev-bridge.js";
 import type {
   AudioNodeDescriptor,
   BridgeInMessage,
+  GraphOp,
   MidiEvent,
   ParameterConfig,
 } from "./types.js";
@@ -141,6 +142,10 @@ export function PluginHost({ children }: PluginHostProps) {
     blockSize: 512,
   });
 
+  // Start a fresh graph collection for this render cycle. Doing this in render
+  // keeps reconciliation idempotent under React StrictMode's extra effect pass.
+  graphRef.current.clear();
+
   // Connect the bridge on mount
   useEffect(() => {
     // Auto-install dev bridge for browser preview if not in JUCE WebView
@@ -240,6 +245,16 @@ export function PluginHost({ children }: PluginHostProps) {
   // useEffect fires after the render is committed, at which point all
   // DSP hooks have registered their nodes into graphRef.current.
   useEffect(() => {
+    // Guard against React 18 StrictMode double-firing effects.
+    // In StrictMode (dev only), effects run → cleanup → run again without
+    // an intervening render. The first run clears the graph, so the second
+    // run sees an empty graph and would incorrectly tear down the native
+    // audio graph. The dirty flag ensures we only reconcile when DSP hooks
+    // have actually registered nodes during a render.
+    if (!graphRef.current.isDirty()) {
+      return;
+    }
+
     const nextSnapshot = graphRef.current.snapshot();
     const { ops, paramOnly } = diffGraphsFull(
       prevSnapshotRef.current,
@@ -251,14 +266,35 @@ export function PluginHost({ children }: PluginHostProps) {
         // Fast path: only parameters changed — send direct atomic updates
         // instead of full graph operations. This avoids the op queue and
         // topological re-sort on the audio thread.
+        // Ops whose values are all numbers or booleans can use the fast path
+        // (booleans are converted to 0/1). Ops containing string values
+        // (e.g. filterType: "lowpass") require the native-side varToFloat
+        // conversion, so they fall back to graphOps.
+        const fallbackOps: GraphOp[] = [];
+
         for (const op of ops) {
-          if (op.op === "updateParams") {
-            for (const [paramName, value] of Object.entries(op.params)) {
-              if (typeof value === "number") {
-                bridge.sendParamUpdate(op.nodeId, paramName, value);
-              }
+          if (op.op !== "updateParams") continue;
+
+          const canFastPath = Object.values(op.params).every(
+            (value) => typeof value === "number" || typeof value === "boolean",
+          );
+
+          if (!canFastPath) {
+            fallbackOps.push(op);
+            continue;
+          }
+
+          for (const [paramName, value] of Object.entries(op.params)) {
+            if (typeof value === "number") {
+              bridge.sendParamUpdate(op.nodeId, paramName, value);
+            } else if (typeof value === "boolean") {
+              bridge.sendParamUpdate(op.nodeId, paramName, value ? 1 : 0);
             }
           }
+        }
+
+        if (fallbackOps.length > 0) {
+          bridge.sendGraphOps(fallbackOps);
         }
       } else {
         bridge.sendGraphOps(ops);
@@ -268,7 +304,7 @@ export function PluginHost({ children }: PluginHostProps) {
     prevSnapshotRef.current = nextSnapshot;
 
     // Clear the live graph for the next render cycle
-    // (this also resets the call index counter)
+    // (this also resets the call index counter and dirty flag)
     graphRef.current.clear();
   });
 

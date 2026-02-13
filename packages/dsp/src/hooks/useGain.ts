@@ -1,5 +1,6 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import { PARAM_GAIN, PARAM_BYPASS } from "../param-keys.js";
 
 export interface GainParams {
   /**
@@ -47,8 +48,8 @@ export function useGain(input: Signal, params: GainParams): Signal {
   return useAudioNode(
     "gain",
     {
-      gain: gainValue,
-      bypass: params.bypass ?? false,
+      [PARAM_GAIN]: gainValue,
+      [PARAM_BYPASS]: params.bypass ?? false,
     },
     inputs,
   );

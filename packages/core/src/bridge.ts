@@ -11,8 +11,8 @@ type MessageHandler = (msg: BridgeInMessage) => void;
  * NativeBridge — the JS side of the JUCE WebView bridge.
  *
  * In production, this communicates with the C++ plugin via JUCE's
- * WebBrowserComponent messaging (window.__JUCE__.backend.emitEvent /
- * window.__JUCE__.backend.addEventListener).
+ * WebBrowserComponent messaging (window.__JUCE__.backend.emitEvent +
+ * native-side event listeners).
  *
  * In dev/browser mode, it falls back to a mock or Web Audio–backed
  * implementation for rapid iteration.
@@ -20,6 +20,8 @@ type MessageHandler = (msg: BridgeInMessage) => void;
 export class NativeBridge {
   private handlers = new Set<MessageHandler>();
   private connected = false;
+  private pendingMessages: BridgeOutMessage[] = [];
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Initialize the bridge. Call once at plugin startup.
@@ -47,17 +49,14 @@ export class NativeBridge {
    * Send a message to the native C++ side.
    */
   send(msg: BridgeOutMessage): void {
-    if (isJuceWebView()) {
-      (window as any).__JUCE__.backend.emitEvent(
-        "rau_js_message",
-        JSON.stringify(msg),
-      );
-    } else {
-      // Dev/browser mode — handled by the mock bridge
-      if (typeof (globalThis as any).__RAU_DEV_BRIDGE__ === "function") {
-        (globalThis as any).__RAU_DEV_BRIDGE__(msg);
-      }
+    // Try immediate delivery. If the backend isn't ready yet, queue and retry.
+    if (this.trySend(msg)) {
+      this.flushPending();
+      return;
     }
+
+    this.pendingMessages.push(msg);
+    this.scheduleFlush();
   }
 
   /**
@@ -99,10 +98,59 @@ export class NativeBridge {
       handler(msg);
     }
   }
+
+  private trySend(msg: BridgeOutMessage): boolean {
+    const juceBackend = getJuceBackend();
+    if (juceBackend) {
+      juceBackend.emitEvent("rau_js_message", JSON.stringify(msg));
+      return true;
+    }
+
+    // Dev/browser mode — handled by the mock bridge.
+    if (typeof (globalThis as any).__RAU_DEV_BRIDGE__ === "function") {
+      (globalThis as any).__RAU_DEV_BRIDGE__(msg);
+      return true;
+    }
+
+    return false;
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushTimer !== null) return;
+
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      this.flushPending();
+
+      if (this.pendingMessages.length > 0) {
+        this.scheduleFlush();
+      }
+    }, 50);
+  }
+
+  private flushPending(): void {
+    if (this.pendingMessages.length === 0) return;
+
+    const remaining: BridgeOutMessage[] = [];
+    for (const queued of this.pendingMessages) {
+      if (!this.trySend(queued)) {
+        remaining.push(queued);
+      }
+    }
+    this.pendingMessages = remaining;
+  }
 }
 
-function isJuceWebView(): boolean {
-  return typeof window !== "undefined" && !!(window as any).__JUCE__;
+interface JuceBackend {
+  emitEvent(eventId: string, payload: unknown): void;
+}
+
+function getJuceBackend(): JuceBackend | null {
+  if (typeof window === "undefined") return null;
+
+  const backend = (window as any).__JUCE__?.backend;
+  if (!backend || typeof backend.emitEvent !== "function") return null;
+  return backend as JuceBackend;
 }
 
 /** Singleton bridge instance. */

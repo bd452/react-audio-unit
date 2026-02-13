@@ -1,5 +1,12 @@
 import type { Signal } from "@react-audio-unit/core";
 import { useAudioNode } from "../useAudioNode.js";
+import {
+  PARAM_ROOM_SIZE,
+  PARAM_DAMPING,
+  PARAM_MIX,
+  PARAM_PRE_DELAY,
+  PARAM_BYPASS,
+} from "../param-keys.js";
 
 export interface ReverbParams {
   /** Room size (0–1). */
@@ -20,11 +27,11 @@ export function useReverb(input: Signal, params: ReverbParams): Signal {
   return useAudioNode(
     "reverb",
     {
-      roomSize: params.roomSize,
-      damping: params.damping,
-      mix: params.mix,
-      preDelay: params.preDelay ?? 0,
-      bypass: params.bypass ?? false,
+      [PARAM_ROOM_SIZE]: params.roomSize,
+      [PARAM_DAMPING]: params.damping,
+      [PARAM_MIX]: params.mix,
+      [PARAM_PRE_DELAY]: params.preDelay ?? 0,
+      [PARAM_BYPASS]: params.bypass ?? false,
     },
     [input],
   );

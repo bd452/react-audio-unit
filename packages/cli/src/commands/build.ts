@@ -104,6 +104,16 @@ export const buildCommand = new Command("build")
     console.log(chalk.blue("Step 1/3: Building web UI..."));
     await execa("npx", ["vite", "build"], { cwd, stdio: "inherit" });
     const uiDistDir = path.join(cwd, "dist", "ui");
+    const uiEntry = path.join(uiDistDir, "index.html");
+    if (!(await fs.pathExists(uiEntry))) {
+      console.error(chalk.red("Web UI build output missing: dist/ui/index.html"));
+      console.error(
+        chalk.dim(
+          "Ensure your Vite config outputs to dist/ui so the plugin can embed the UI.",
+        ),
+      );
+      process.exit(1);
+    }
     console.log(chalk.green("  Web UI built successfully"));
     console.log();
 
